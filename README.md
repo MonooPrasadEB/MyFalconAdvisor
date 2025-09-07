@@ -1,6 +1,6 @@
 # MyFalconAdvisor - Advanced AI Investment Platform
 
-**Project Update**: Met with team today - Akshy is currently blocked on Cursor access and working on getting it resolved.
+**Project Updates**: For the latest team updates and project status, see our [Project Document](https://docs.google.com/document/d/1H-Onfe3Oi-8sa-IJBGKt1kV9QNT-M3fU6o2CYknTxbs/edit?tab=t.cwgg688j0fv4).
 
 MyFalconAdvisor is a sophisticated multi-agent AI investment platform that combines cutting-edge artificial intelligence with quantitative finance to deliver personalized investment advice at scale. Built with Python, LangGraph, and real financial data integration.
 

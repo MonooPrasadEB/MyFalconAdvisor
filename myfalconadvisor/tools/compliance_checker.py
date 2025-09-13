@@ -114,7 +114,7 @@ class ComplianceChecker:
             warnings.append("Large trade size - ensure no market manipulation concerns")
         
         trade_approved = len([v for v in violations if v.severity == "critical"]) == 0
-        requires_disclosure = any(v.requires_disclosure for v in violations)
+        requires_disclosure = len(violations) > 0  # Require disclosure if any violations found
         
         return TradeComplianceCheck(
             trade_approved=trade_approved,
@@ -302,11 +302,12 @@ class ComplianceChecker:
         }
     
     def _load_compliance_rules(self) -> Dict[str, ComplianceRule]:
-        """Load compliance rules database."""
-        # In production, this would load from a database
-        # Here we define key rules as examples
+        """Load comprehensive compliance rules database."""
+        # In production, this would load from a database or regulatory API
+        # Here we define comprehensive rules covering SEC, FINRA, and IRS regulations
         
         rules = {
+            # ===== POSITION AND CONCENTRATION RULES =====
             "CONC-001": ComplianceRule(
                 rule_id="CONC-001",
                 regulation_source="SEC",
@@ -317,24 +318,416 @@ class ComplianceChecker:
                 effective_date=datetime(2000, 1, 1),
                 last_updated=datetime.now()
             ),
+            "CONC-002": ComplianceRule(
+                rule_id="CONC-002",
+                regulation_source="SEC",
+                rule_name="Sector Concentration Limit",
+                description="Single sector allocation should not exceed 40% of portfolio",
+                severity="warning",
+                applies_to=["individual", "institutional"],
+                effective_date=datetime(2000, 1, 1),
+                last_updated=datetime.now()
+            ),
+            "CONC-003": ComplianceRule(
+                rule_id="CONC-003",
+                regulation_source="FINRA",
+                rule_name="Concentrated Position Disclosure",
+                description="Must disclose risks of concentrated positions (>10% in single security)",
+                severity="major",
+                applies_to=["advisor"],
+                effective_date=datetime(2012, 7, 9),
+                last_updated=datetime.now()
+            ),
+
+            # ===== SUITABILITY RULES =====
             "SUIT-001": ComplianceRule(
                 rule_id="SUIT-001", 
                 regulation_source="FINRA",
                 rule_name="Suitability Rule 2111",
-                description="Recommendations must be suitable for client", 
+                description="Recommendations must be suitable for client based on investment profile", 
                 severity="critical",
                 applies_to=["advisor"],
                 effective_date=datetime(2012, 7, 9),
                 last_updated=datetime.now()
             ),
-            "WASH-001": ComplianceRule(
-                rule_id="WASH-001",
-                regulation_source="IRS", 
-                rule_name="Wash Sale Rule",
+            "SUIT-002": ComplianceRule(
+                rule_id="SUIT-002",
+                regulation_source="FINRA",
+                rule_name="Quantitative Suitability",
+                description="Series of transactions must be suitable in aggregate",
+                severity="critical",
+                applies_to=["advisor"],
+                effective_date=datetime(2012, 7, 9),
+                last_updated=datetime.now()
+            ),
+            "SUIT-003": ComplianceRule(
+                rule_id="SUIT-003",
+                regulation_source="FINRA",
+                rule_name="Customer-Specific Suitability",
+                description="Must consider customer's age, investment experience, time horizon, liquidity needs",
+                severity="critical",
+                applies_to=["advisor"],
+                effective_date=datetime(2012, 7, 9),
+                last_updated=datetime.now()
+            ),
+            "SUIT-004": ComplianceRule(
+                rule_id="SUIT-004",
+                regulation_source="SEC",
+                rule_name="Best Interest Standard",
+                description="Must act in client's best interest when making recommendations",
+                severity="critical",
+                applies_to=["advisor"],
+                effective_date=datetime(2020, 6, 30),
+                last_updated=datetime.now()
+            ),
+
+            # ===== DISCLOSURE REQUIREMENTS =====
+            "DISC-001": ComplianceRule(
+                rule_id="DISC-001",
+                regulation_source="SEC",
+                rule_name="Form ADV Disclosure",
+                description="Must provide current Form ADV Part 2A to clients",
+                severity="critical",
+                applies_to=["advisor"],
+                effective_date=datetime(2011, 3, 14),
+                last_updated=datetime.now()
+            ),
+            "DISC-002": ComplianceRule(
+                rule_id="DISC-002",
+                regulation_source="SEC",
+                rule_name="Risk Disclosure",
+                description="Must disclose material risks of recommended investments",
+                severity="critical",
+                applies_to=["advisor"],
+                effective_date=datetime(2000, 1, 1),
+                last_updated=datetime.now()
+            ),
+            "DISC-003": ComplianceRule(
+                rule_id="DISC-003",
+                regulation_source="SEC",
+                rule_name="Conflict of Interest Disclosure",
+                description="Must disclose material conflicts of interest",
+                severity="critical",
+                applies_to=["advisor"],
+                effective_date=datetime(2000, 1, 1),
+                last_updated=datetime.now()
+            ),
+            "DISC-004": ComplianceRule(
+                rule_id="DISC-004",
+                regulation_source="SEC",
+                rule_name="Fee Disclosure",
+                description="Must clearly disclose all fees and compensation",
+                severity="critical",
+                applies_to=["advisor"],
+                effective_date=datetime(2000, 1, 1),
+                last_updated=datetime.now()
+            ),
+            "DISC-005": ComplianceRule(
+                rule_id="DISC-005",
+                regulation_source="SEC",
+                rule_name="Performance Disclosure",
+                description="Performance claims must be accurate and not misleading",
+                severity="major",
+                applies_to=["advisor"],
+                effective_date=datetime(2000, 1, 1),
+                last_updated=datetime.now()
+            ),
+
+            # ===== FIDUCIARY DUTIES =====
+            "FIDU-001": ComplianceRule(
+                rule_id="FIDU-001",
+                regulation_source="SEC",
+                rule_name="Duty of Care",
+                description="Must exercise reasonable care in providing investment advice",
+                severity="critical",
+                applies_to=["advisor"],
+                effective_date=datetime(1940, 8, 22),
+                last_updated=datetime.now()
+            ),
+            "FIDU-002": ComplianceRule(
+                rule_id="FIDU-002",
+                regulation_source="SEC",
+                rule_name="Duty of Loyalty",
+                description="Must act in client's best interest, not advisor's interest",
+                severity="critical",
+                applies_to=["advisor"],
+                effective_date=datetime(1940, 8, 22),
+                last_updated=datetime.now()
+            ),
+            "FIDU-003": ComplianceRule(
+                rule_id="FIDU-003",
+                regulation_source="SEC",
+                rule_name="Prudent Investor Rule",
+                description="Must exercise prudence in investment decisions",
+                severity="critical",
+                applies_to=["advisor"],
+                effective_date=datetime(1940, 8, 22),
+                last_updated=datetime.now()
+            ),
+
+            # ===== TRADING RULES =====
+            "TRAD-001": ComplianceRule(
+                rule_id="TRAD-001",
+                regulation_source="FINRA",
+                rule_name="Pattern Day Trader Rule",
+                description="Accounts under $25K limited to 3 day trades per 5-day period",
+                severity="warning",
+                applies_to=["individual"],
+                effective_date=datetime(2001, 2, 27),
+                last_updated=datetime.now()
+            ),
+            "TRAD-002": ComplianceRule(
+                rule_id="TRAD-002",
+                regulation_source="SEC",
+                rule_name="Market Manipulation Prevention",
+                description="Cannot engage in manipulative or deceptive trading practices",
+                severity="critical",
+                applies_to=["individual", "advisor"],
+                effective_date=datetime(1934, 6, 6),
+                last_updated=datetime.now()
+            ),
+            "TRAD-003": ComplianceRule(
+                rule_id="TRAD-003",
+                regulation_source="FINRA",
+                rule_name="Penny Stock Rules",
+                description="Special requirements for penny stock transactions",
+                severity="major",
+                applies_to=["advisor"],
+                effective_date=datetime(1990, 1, 1),
+                last_updated=datetime.now()
+            ),
+            "TRAD-004": ComplianceRule(
+                rule_id="TRAD-004",
+                regulation_source="SEC",
+                rule_name="Short Sale Rule",
+                description="Must comply with short sale regulations and disclosures",
+                severity="major",
+                applies_to=["individual", "advisor"],
+                effective_date=datetime(2008, 10, 3),
+                last_updated=datetime.now()
+            ),
+
+            # ===== TAX COMPLIANCE RULES =====
+            "TAX-001": ComplianceRule(
+                rule_id="TAX-001",
+                regulation_source="IRS",
+                rule_name="Wash Sale Rule Section 1091",
                 description="Cannot claim loss if repurchasing substantially identical security within 30 days",
                 severity="warning",
                 applies_to=["individual", "institutional"],
                 effective_date=datetime(1921, 1, 1),
+                last_updated=datetime.now()
+            ),
+            "TAX-002": ComplianceRule(
+                rule_id="TAX-002",
+                regulation_source="IRS",
+                rule_name="Capital Gains Tax Rules",
+                description="Must consider tax implications of short vs long-term capital gains",
+                severity="advisory",
+                applies_to=["individual", "institutional"],
+                effective_date=datetime(1954, 1, 1),
+                last_updated=datetime.now()
+            ),
+            "TAX-003": ComplianceRule(
+                rule_id="TAX-003",
+                regulation_source="IRS",
+                rule_name="Tax Loss Harvesting",
+                description="Must comply with tax loss harvesting regulations",
+                severity="advisory",
+                applies_to=["individual", "institutional"],
+                effective_date=datetime(1954, 1, 1),
+                last_updated=datetime.now()
+            ),
+            "TAX-004": ComplianceRule(
+                rule_id="TAX-004",
+                regulation_source="IRS",
+                rule_name="Required Minimum Distributions",
+                description="Must consider RMD requirements for retirement accounts",
+                severity="major",
+                applies_to=["individual", "advisor"],
+                effective_date=datetime(1986, 1, 1),
+                last_updated=datetime.now()
+            ),
+
+            # ===== RECORD KEEPING RULES =====
+            "REC-001": ComplianceRule(
+                rule_id="REC-001",
+                regulation_source="SEC",
+                rule_name="Rule 204-2 Record Keeping",
+                description="Must maintain required books and records",
+                severity="critical",
+                applies_to=["advisor"],
+                effective_date=datetime(2000, 1, 1),
+                last_updated=datetime.now()
+            ),
+            "REC-002": ComplianceRule(
+                rule_id="REC-002",
+                regulation_source="SEC",
+                rule_name="Client Communication Records",
+                description="Must maintain records of all client communications",
+                severity="critical",
+                applies_to=["advisor"],
+                effective_date=datetime(2000, 1, 1),
+                last_updated=datetime.now()
+            ),
+            "REC-003": ComplianceRule(
+                rule_id="REC-003",
+                regulation_source="SEC",
+                rule_name="Trade Documentation",
+                description="Must maintain complete trade documentation and audit trail",
+                severity="critical",
+                applies_to=["advisor"],
+                effective_date=datetime(2000, 1, 1),
+                last_updated=datetime.now()
+            ),
+
+            # ===== KNOW YOUR CUSTOMER RULES =====
+            "KYC-001": ComplianceRule(
+                rule_id="KYC-001",
+                regulation_source="FINRA",
+                rule_name="Rule 2090 - Know Your Customer",
+                description="Must know essential facts about customer",
+                severity="critical",
+                applies_to=["advisor"],
+                effective_date=datetime(2012, 7, 9),
+                last_updated=datetime.now()
+            ),
+            "KYC-002": ComplianceRule(
+                rule_id="KYC-002",
+                regulation_source="FINRA",
+                rule_name="Customer Information Updates",
+                description="Must keep customer information current and accurate",
+                severity="major",
+                applies_to=["advisor"],
+                effective_date=datetime(2012, 7, 9),
+                last_updated=datetime.now()
+            ),
+            "KYC-003": ComplianceRule(
+                rule_id="KYC-003",
+                regulation_source="SEC",
+                rule_name="Customer Identification Program",
+                description="Must verify customer identity and maintain records",
+                severity="critical",
+                applies_to=["advisor"],
+                effective_date=datetime(2003, 10, 1),
+                last_updated=datetime.now()
+            ),
+
+            # ===== OUTSIDE BUSINESS ACTIVITIES =====
+            "OBA-001": ComplianceRule(
+                rule_id="OBA-001",
+                regulation_source="FINRA",
+                rule_name="Rule 3270 - Outside Business Activities",
+                description="Must disclose outside business activities",
+                severity="major",
+                applies_to=["advisor"],
+                effective_date=datetime(2012, 7, 9),
+                last_updated=datetime.now()
+            ),
+            "OBA-002": ComplianceRule(
+                rule_id="OBA-002",
+                regulation_source="FINRA",
+                rule_name="Private Securities Transactions",
+                description="Must disclose private securities transactions",
+                severity="major",
+                applies_to=["advisor"],
+                effective_date=datetime(2012, 7, 9),
+                last_updated=datetime.now()
+            ),
+
+            # ===== ADVERTISING AND COMMUNICATIONS =====
+            "ADV-001": ComplianceRule(
+                rule_id="ADV-001",
+                regulation_source="SEC",
+                rule_name="Investment Advisers Act Rule 206(4)-1",
+                description="Advertisements must not be false or misleading",
+                severity="critical",
+                applies_to=["advisor"],
+                effective_date=datetime(2021, 5, 4),
+                last_updated=datetime.now()
+            ),
+            "ADV-002": ComplianceRule(
+                rule_id="ADV-002",
+                regulation_source="SEC",
+                rule_name="Testimonial and Endorsement Rules",
+                description="Must comply with testimonial and endorsement regulations",
+                severity="major",
+                applies_to=["advisor"],
+                effective_date=datetime(2021, 5, 4),
+                last_updated=datetime.now()
+            ),
+            "ADV-003": ComplianceRule(
+                rule_id="ADV-003",
+                regulation_source="SEC",
+                rule_name="Performance Advertising Rules",
+                description="Performance claims must meet specific requirements",
+                severity="major",
+                applies_to=["advisor"],
+                effective_date=datetime(2021, 5, 4),
+                last_updated=datetime.now()
+            ),
+
+            # ===== COMPLEX PRODUCTS =====
+            "COMP-001": ComplianceRule(
+                rule_id="COMP-001",
+                regulation_source="FINRA",
+                rule_name="Complex Product Suitability",
+                description="Special suitability requirements for complex products",
+                severity="critical",
+                applies_to=["advisor"],
+                effective_date=datetime(2012, 7, 9),
+                last_updated=datetime.now()
+            ),
+            "COMP-002": ComplianceRule(
+                rule_id="COMP-002",
+                regulation_source="SEC",
+                rule_name="Derivatives Disclosure",
+                description="Must disclose risks of derivative investments",
+                severity="critical",
+                applies_to=["advisor"],
+                effective_date=datetime(2000, 1, 1),
+                last_updated=datetime.now()
+            ),
+            "COMP-003": ComplianceRule(
+                rule_id="COMP-003",
+                regulation_source="SEC",
+                rule_name="Alternative Investment Disclosure",
+                description="Must disclose risks of alternative investments",
+                severity="major",
+                applies_to=["advisor"],
+                effective_date=datetime(2000, 1, 1),
+                last_updated=datetime.now()
+            ),
+
+            # ===== RETIREMENT ACCOUNTS =====
+            "RET-001": ComplianceRule(
+                rule_id="RET-001",
+                regulation_source="IRS",
+                rule_name="IRA Contribution Limits",
+                description="Must comply with IRA contribution limits and rules",
+                severity="major",
+                applies_to=["individual", "advisor"],
+                effective_date=datetime(1974, 9, 2),
+                last_updated=datetime.now()
+            ),
+            "RET-002": ComplianceRule(
+                rule_id="RET-002",
+                regulation_source="IRS",
+                rule_name="401(k) Rules and Limits",
+                description="Must comply with 401(k) contribution limits and regulations",
+                severity="major",
+                applies_to=["individual", "advisor"],
+                effective_date=datetime(1978, 11, 6),
+                last_updated=datetime.now()
+            ),
+            "RET-003": ComplianceRule(
+                rule_id="RET-003",
+                regulation_source="IRS",
+                rule_name="Early Withdrawal Penalties",
+                description="Must disclose early withdrawal penalties for retirement accounts",
+                severity="major",
+                applies_to=["individual", "advisor"],
+                effective_date=datetime(1986, 1, 1),
                 last_updated=datetime.now()
             )
         }

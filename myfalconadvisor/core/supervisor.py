@@ -716,18 +716,22 @@ Format your response as a clear, professional trade execution analysis.
                         "initial_request": request
                     }
                 )
-                logger.info(f"Started new chat session: {session_id}")
+                if session_id:
+                    logger.info(f"Started new chat session: {session_id}")
+                else:
+                    logger.warning("Failed to start chat session - continuing without logging")
             
-            # Log user message
-            log_user_message(
-                request, 
-                session_id=session_id,
-                metadata={
-                    "has_client_profile": bool(client_profile),
-                    "has_portfolio_data": bool(portfolio_data),
-                    "request_type": "investment_inquiry"
-                }
-            )
+            # Log user message only if we have a valid session
+            if session_id:
+                log_user_message(
+                    request, 
+                    session_id=session_id,
+                    metadata={
+                        "has_client_profile": bool(client_profile),
+                        "has_portfolio_data": bool(portfolio_data),
+                        "request_type": "investment_inquiry"
+                    }
+                )
             
             # Initialize state
             initial_state = InvestmentAdvisorState(

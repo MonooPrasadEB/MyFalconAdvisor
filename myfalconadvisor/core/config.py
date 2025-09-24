@@ -26,6 +26,21 @@ class Config(BaseSettings):
     fred_api_key: Optional[str] = Field(None, env="FRED_API_KEY")
     polygon_api_key: Optional[str] = Field(None, env="POLYGON_API_KEY")
     
+    # Alpaca Trading API
+    alpaca_api_key: Optional[str] = Field(None, env="ALPACA_API_KEY")
+    alpaca_secret_key: Optional[str] = Field(None, env="ALPACA_SECRET_KEY")
+    alpaca_base_url: str = Field("https://paper-api.alpaca.markets", env="ALPACA_BASE_URL")
+    alpaca_paper_trading: bool = Field(True, env="ALPACA_PAPER_TRADING")
+    
+    # Database Configuration
+    db_host: Optional[str] = Field(None, env="DB_HOST")
+    db_port: int = Field(5432, env="DB_PORT")
+    db_name: Optional[str] = Field(None, env="DB_NAME")
+    db_user: Optional[str] = Field(None, env="DB_USER")
+    db_password: Optional[str] = Field(None, env="DB_PASSWORD")
+    db_echo: bool = Field(False, env="DB_ECHO")
+    db_sslmode: str = Field("prefer", env="DB_SSLMODE")
+    
     # Data Settings
     market_data_provider: str = Field("yfinance", env="MARKET_DATA_PROVIDER")  # yfinance, alpha_vantage, etc.
     cache_duration_hours: int = Field(1, env="CACHE_DURATION_HOURS")

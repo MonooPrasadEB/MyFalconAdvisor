@@ -20,6 +20,7 @@ from ..tools.compliance_checker import (
     recommendation_validation_tool
 )
 from ..tools.market_data import market_data_tool
+from ..tools.alpaca_trading_service import alpaca_trading_service
 from ..core.config import Config
 
 config = Config.get_instance()
@@ -121,6 +122,9 @@ class ExecutionAgent:
             recommendation_validation_tool,
             market_data_tool
         ]
+        
+        # Alpaca trading service integration
+        self.alpaca_service = alpaca_trading_service
         
         # Order management
         self.pending_orders: Dict[str, TradeOrder] = {}
@@ -523,17 +527,29 @@ Remember: Your primary obligation is to execute trades in the client's best inte
     
     def _get_current_price(self, symbol: str) -> Optional[float]:
         """Get current market price for symbol."""
-        # In production, this would call market data API
-        # Here we simulate with common stock prices
-        mock_prices = {
-            "AAPL": 193.50,
-            "MSFT": 417.10,
-            "GOOGL": 175.20,
-            "AMZN": 151.94,
-            "TSLA": 248.42,
-            "SPY": 502.43
-        }
-        return mock_prices.get(symbol, 100.0)  # Default price
+        try:
+            # Try to get real market data from Alpaca
+            if not self.alpaca_service.mock_mode:
+                market_data = self.alpaca_service.get_market_data(symbol)
+                if market_data and not market_data.get("error"):
+                    price = market_data.get("latest_price")
+                    if price:
+                        return float(price)
+            
+            # Fall back to mock prices if Alpaca not available
+            mock_prices = {
+                "AAPL": 193.50,
+                "MSFT": 417.10,
+                "GOOGL": 175.20,
+                "AMZN": 151.94,
+                "TSLA": 248.42,
+                "SPY": 502.43
+            }
+            return mock_prices.get(symbol, 100.0)  # Default price
+            
+        except Exception as e:
+            logger.warning(f"Failed to get current price for {symbol}: {e}")
+            return 100.0  # Fallback price
     
     def _calculate_estimated_cost(
         self, action: str, quantity: float, market_price: float, 
@@ -581,8 +597,52 @@ Remember: Your primary obligation is to execute trades in the client's best inte
         return "queued_for_execution"
     
     def _simulate_trade_execution(self, order: TradeOrder) -> ExecutionResult:
-        """Simulate trade execution (replace with real broker API in production)."""
+        """Execute trade through Alpaca API or simulate if in mock mode."""
         try:
+            # Try to execute through Alpaca API first
+            if not self.alpaca_service.mock_mode:
+                logger.info(f"Executing order {order.order_id} through Alpaca API")
+                
+                alpaca_result = self.alpaca_service.place_order(
+                    symbol=order.symbol,
+                    side=order.action,
+                    quantity=order.quantity,
+                    order_type=order.order_type.value,
+                    limit_price=order.price if order.order_type == OrderType.LIMIT else None,
+                    user_id=order.client_id,
+                    portfolio_id=None  # Could be enhanced to track portfolio
+                )
+                
+                if alpaca_result.get("success"):
+                    # Get execution details from Alpaca
+                    alpaca_order_id = alpaca_result.get("order_id")
+                    
+                    # Monitor order status (simplified - in production you'd poll until filled)
+                    status_result = self.alpaca_service.get_order_status(alpaca_order_id)
+                    
+                    executed_price = status_result.get("filled_avg_price") or self._get_current_price(order.symbol)
+                    executed_quantity = status_result.get("filled_qty", order.quantity)
+                    commission = alpaca_result.get("estimated_cost", 0) - (executed_price * executed_quantity)
+                    
+                    return ExecutionResult(
+                        success=True,
+                        order_id=order.order_id,
+                        executed_price=executed_price,
+                        executed_quantity=executed_quantity,
+                        execution_timestamp=datetime.now(),
+                        commission_paid=max(0, commission),
+                        price_improvement=0  # Could calculate vs expected price
+                    )
+                else:
+                    return ExecutionResult(
+                        success=False,
+                        order_id=order.order_id,
+                        error_message=f"Alpaca execution failed: {alpaca_result.get('error', 'Unknown error')}"
+                    )
+            
+            # Fall back to simulation if Alpaca not available
+            logger.info(f"Simulating execution for order {order.order_id} (Alpaca not available)")
+            
             current_price = self._get_current_price(order.symbol)
             
             # Simulate small price improvement/slippage
@@ -603,6 +663,7 @@ Remember: Your primary obligation is to execute trades in the client's best inte
             )
             
         except Exception as e:
+            logger.error(f"Trade execution failed for order {order.order_id}: {e}")
             return ExecutionResult(
                 success=False,
                 order_id=order.order_id,

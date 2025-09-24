@@ -23,6 +23,7 @@ from ..agents.multi_task_agent import multi_task_agent
 from ..agents.execution_agent import execution_agent
 from ..agents.compliance_reviewer import compliance_reviewer_agent
 from ..core.config import Config
+from ..tools.chat_logger import chat_logger, log_user_message, log_supervisor_action
 
 config = Config.get_instance()
 logger = logging.getLogger(__name__)
@@ -48,8 +49,9 @@ class InvestmentAdvisorState(TypedDict):
     requires_approval: bool
     workflow_complete: bool
     
-    # Session management
-    session_id: str
+    # Chat logging
+    session_id: Optional[str]
+    user_id: Optional[str]
     created_at: datetime
 
 
@@ -682,7 +684,8 @@ Format your response as a clear, professional trade execution analysis.
         request: str, 
         client_profile: Optional[Dict] = None,
         portfolio_data: Optional[Dict] = None,
-        session_id: Optional[str] = None
+        session_id: Optional[str] = None,
+        user_id: Optional[str] = None
     ) -> Dict:
         """
         Process a client request through the multi-agent workflow.
@@ -692,11 +695,40 @@ Format your response as a clear, professional trade execution analysis.
             client_profile: Client demographic and preference information
             portfolio_data: Current portfolio holdings and data
             session_id: Session identifier for conversation continuity
+            user_id: User identifier for logging
             
         Returns:
             Dictionary containing the complete workflow results
         """
         try:
+            # Start or continue chat session
+            if not session_id:
+                session_type = "advisory"
+                if "trade" in request.lower() or "buy" in request.lower() or "sell" in request.lower():
+                    session_type = "execution"
+                
+                session_id = chat_logger.start_session(
+                    user_id=user_id,
+                    session_type=session_type,
+                    context_data={
+                        "client_profile": client_profile or {},
+                        "portfolio_data": portfolio_data or {},
+                        "initial_request": request
+                    }
+                )
+                logger.info(f"Started new chat session: {session_id}")
+            
+            # Log user message
+            log_user_message(
+                request, 
+                session_id=session_id,
+                metadata={
+                    "has_client_profile": bool(client_profile),
+                    "has_portfolio_data": bool(portfolio_data),
+                    "request_type": "investment_inquiry"
+                }
+            )
+            
             # Initialize state
             initial_state = InvestmentAdvisorState(
                 messages=[HumanMessage(content=request)],
@@ -709,7 +741,8 @@ Format your response as a clear, professional trade execution analysis.
                 next_agent=None,
                 requires_approval=False,
                 workflow_complete=False,
-                session_id=session_id or f"session_{int(datetime.now().timestamp())}",
+                session_id=session_id,
+                user_id=user_id,
                 created_at=datetime.now()
             )
             

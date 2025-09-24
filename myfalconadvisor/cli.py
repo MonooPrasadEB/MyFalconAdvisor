@@ -149,8 +149,8 @@ Examples:
         console.print(Panel.fit("🤖 MyFalconAdvisor - Interactive Mode", style="bold green"))
         console.print("Type 'exit' to quit, 'help' for commands, or ask any investment question.\n")
         
-        # Initialize session
-        self.session_id = f"interactive_{int(datetime.now().timestamp())}"
+        # Let the supervisor handle session creation
+        self.session_id = None
         
         # Optional: Load or create client profile - with exit handling
         profile_response = Prompt.ask("Would you like to set up a client profile for personalized advice? (y/n/profile/exit/help)", choices=["y", "yes", "n", "no", "exit", "quit", "help", "profile"], show_choices=False, default="n")
@@ -227,6 +227,10 @@ Examples:
                         portfolio_data=self.portfolio_data,
                         session_id=self.session_id
                     )
+                    
+                    # Capture session_id for subsequent requests
+                    if not self.session_id and result.get("session_id"):
+                        self.session_id = result["session_id"]
                 
                 # Display response
                 self._display_interactive_response(result)

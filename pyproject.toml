@@ -47,6 +47,7 @@ dependencies = [
     "alpha-vantage>=2.3.1", 
     "fredapi>=0.5.0",
     "pandas-datareader>=0.10.0",
+    "alpaca-py>=0.21.0",  # Alpaca Trading API
     
     # Data Science and Analysis
     "pandas>=2.0.0",

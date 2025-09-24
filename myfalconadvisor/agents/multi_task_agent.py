@@ -15,6 +15,7 @@ from langchain_core.tools import BaseTool
 from ..tools.portfolio_analyzer import portfolio_analysis_tool
 from ..tools.risk_assessment import risk_assessment_tool, stress_test_tool, risk_scenario_tool
 from ..tools.market_data import market_data_tool
+from ..tools.chat_logger import log_advisor_response
 from ..core.config import Config
 
 config = Config.get_instance()

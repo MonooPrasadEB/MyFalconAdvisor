@@ -8,6 +8,7 @@ This directory contains comprehensive tests for all MyFalconAdvisor components.
 - **`test_database_connection.py`** - PostgreSQL database connectivity and CRUD operations
 - **`test_alpaca_integration.py`** - Alpaca API connection, market data, and order placement
 - **`test_ai_agents.py`** - AI agents functionality (multi-task, compliance, execution)
+- **`test_complete_logging_workflow.py`** - Complete AI workflow with database logging verification
 - **`test_multi_client_system.py`** - Multi-client portfolio management system
 
 ### Test Runner
@@ -31,6 +32,9 @@ python tests/test_alpaca_integration.py
 
 # AI agents tests
 python tests/test_ai_agents.py
+
+# Complete logging workflow tests
+python tests/test_complete_logging_workflow.py
 
 # Multi-client system tests
 python tests/test_multi_client_system.py
@@ -62,8 +66,15 @@ Before running tests, ensure you have:
 ### 🤖 AI Agent Tests
 - Multi-task agent functionality
 - Compliance reviewer
-- Execution agent
+- Execution service
 - Tool availability
+
+### 📝 Complete Logging Workflow Tests
+- ExecutionService initialization
+- Database write methods
+- Portfolio validation logic
+- Complete AI workflow with database logging
+- Table population verification
 
 ### 🏢 Multi-Client Tests
 - Portfolio creation

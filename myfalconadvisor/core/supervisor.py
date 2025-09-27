@@ -20,7 +20,7 @@ from langgraph.graph.message import add_messages
 from langgraph.prebuilt import create_react_agent
 
 from ..agents.multi_task_agent import multi_task_agent
-from ..agents.execution_agent import execution_agent
+from ..agents.execution_agent import execution_service
 from ..agents.compliance_reviewer import compliance_reviewer_agent
 from ..core.config import Config
 from ..tools.chat_logger import chat_logger, log_user_message, log_supervisor_action
@@ -74,7 +74,7 @@ class InvestmentAdvisorSupervisor:
         
         # Agent instances
         self.multi_task_agent = multi_task_agent
-        self.execution_agent = execution_agent 
+        self.execution_service = execution_service 
         self.compliance_reviewer = compliance_reviewer_agent
         
         # Create the workflow graph
@@ -94,8 +94,8 @@ class InvestmentAdvisorSupervisor:
         
         trade_agent = create_react_agent(
             self.llm,
-            self.execution_agent.get_tools(),
-            prompt=self.execution_agent.get_system_message()
+            [],  # ExecutionService doesn't have tools anymore
+            prompt="ExecutionService: Non-AI workflow service for trade execution and portfolio validation."
         )
         
         compliance_agent = create_react_agent(

@@ -28,8 +28,8 @@ class ServiceLogger:
     """Centralized logging configuration for all MyFalconAdvisor services."""
     
     def __init__(self):
-        self.log_dir = Path("logs")
-        self.log_dir.mkdir(exist_ok=True)
+        self.log_dir = Path("/tmp/falcon")
+        self.log_dir.mkdir(exist_ok=True, parents=True)
         self.loggers: Dict[str, logging.Logger] = {}
         self._setup_logging()
     

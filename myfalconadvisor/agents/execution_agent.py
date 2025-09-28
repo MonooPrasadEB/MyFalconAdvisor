@@ -12,9 +12,10 @@ from ..tools.alpaca_trading_service import alpaca_trading_service
 from ..tools.database_service import DatabaseService
 from ..tools.chat_logger import chat_logger
 from ..core.config import Config
+from ..core.logging_config import get_execution_logger
 
 config = Config.get_instance()
-logger = logging.getLogger(__name__)
+logger = get_execution_logger()
 
 # Initialize services
 database_service = DatabaseService()

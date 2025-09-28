@@ -15,8 +15,9 @@ from sqlalchemy import text
 
 from .database_service import DatabaseService
 from .alpaca_trading_service import alpaca_trading_service
+from ..core.logging_config import get_portfolio_sync_logger
 
-logger = logging.getLogger(__name__)
+logger = get_portfolio_sync_logger()
 
 
 class PortfolioSyncService:

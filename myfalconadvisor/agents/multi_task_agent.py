@@ -17,9 +17,10 @@ from ..tools.risk_assessment import risk_assessment_tool, risk_scenario_tool
 from ..tools.alpaca_trading_service import alpaca_trading_service
 from ..tools.chat_logger import log_advisor_response
 from ..core.config import Config
+from ..core.logging_config import get_multi_task_logger
 
 config = Config.get_instance()
-logger = logging.getLogger(__name__)
+logger = get_multi_task_logger()
 
 
 class MultiTaskAgent:

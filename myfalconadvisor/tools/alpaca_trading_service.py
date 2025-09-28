@@ -23,9 +23,10 @@ from alpaca.data.timeframe import TimeFrame
 
 from ..core.config import Config
 from ..tools.database_service import DatabaseService
+from ..core.logging_config import get_alpaca_logger
 
 config = Config.get_instance()
-logger = logging.getLogger(__name__)
+logger = get_alpaca_logger()
 
 
 class AlpacaTradingService:

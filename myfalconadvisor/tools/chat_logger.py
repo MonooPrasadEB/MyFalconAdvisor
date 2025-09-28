@@ -383,52 +383,13 @@ class PostgreSQLChatLogger:
             logger.error(f"Error logging recommendation: {e}")
             return False
     
-    def log_order(self, order_id: str, account_id: str, ticker: str, sector: str,
-                  quantity: int, order_type: str, limit_price: Optional[float] = None,
-                  time_in_force: str = "DAY") -> bool:
-        """Log order to orders table"""
-        try:
-            limit_price_sql = f"{limit_price}" if limit_price else "NULL"
-            
-            sql = f"""
-            INSERT INTO orders (order_id, account_id, ticker, sector, quantity, order_type, 
-                              limit_price, timestamp, time_in_force)
-            VALUES ('{order_id}', '{account_id}', '{ticker}', '{sector}', {quantity}, 
-                   '{order_type}', {limit_price_sql}, CURRENT_TIMESTAMP, '{time_in_force}');
-            """
-            
-            result = self._execute_sql(sql)
-            if result is not None:
-                logger.debug(f"Logged order: {order_id}")
-                return True
-            else:
-                logger.error("Failed to log order")
-                return False
-                
-        except Exception as e:
-            logger.error(f"Error logging order: {e}")
-            return False
-    
-    def log_execution(self, exec_id: str, order_id: str, filled_quantity: int, 
-                     fill_price: float) -> bool:
-        """Log order execution to executions table"""
-        try:
-            sql = f"""
-            INSERT INTO executions (exec_id, order_id, filled_quantity, fill_price, exec_timestamp)
-            VALUES ('{exec_id}', '{order_id}', {filled_quantity}, {fill_price}, CURRENT_TIMESTAMP);
-            """
-            
-            result = self._execute_sql(sql)
-            if result is not None:
-                logger.debug(f"Logged execution: {exec_id}")
-                return True
-            else:
-                logger.error("Failed to log execution")
-                return False
-                
-        except Exception as e:
-            logger.error(f"Error logging execution: {e}")
-            return False
+    # REMOVED: Unused legacy methods for orders/executions tables
+    # def log_order() - Never called, system uses transactions table instead
+    # def log_execution() - Never called, system uses transactions table instead
+    # 
+    # The system uses the transactions table as a hybrid design that combines
+    # both order intent and execution results in a single record, making these
+    # separate methods unnecessary.
     
     def update_position(self, account_id: str, ticker: str, sector: str, 
                        quantity: int, avg_cost: float) -> bool:
@@ -505,14 +466,11 @@ def log_ai_recommendation(account_id: str, ticker: str, action: str,
     """Log an AI recommendation"""
     return chat_logger.log_recommendation(account_id, ticker, action, percentage, rationale)
 
-def log_trade_order(order_id: str, account_id: str, ticker: str, sector: str,
-                   quantity: int, order_type: str, limit_price: Optional[float] = None) -> bool:
-    """Log a trade order"""
-    return chat_logger.log_order(order_id, account_id, ticker, sector, quantity, order_type, limit_price)
-
-def log_trade_execution(exec_id: str, order_id: str, filled_quantity: int, fill_price: float) -> bool:
-    """Log a trade execution"""
-    return chat_logger.log_execution(exec_id, order_id, filled_quantity, fill_price)
+# Removed unused wrapper functions:
+# - log_trade_order() - Never called in codebase
+# - log_trade_execution() - Never called in codebase
+# These were redundant wrappers for chat_logger.log_order() and chat_logger.log_execution()
+# which are also unused since the system uses transactions table instead of orders/executions
 
 def update_account_position(account_id: str, ticker: str, sector: str, 
                            quantity: int, avg_cost: float) -> bool:

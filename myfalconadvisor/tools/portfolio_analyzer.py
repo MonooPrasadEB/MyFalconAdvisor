@@ -52,7 +52,7 @@ class AdvancedPortfolioAnalyzer:
         except Exception as e:
             logger.error(f"Portfolio analysis failed: {e}")
             return {"error": str(e)}
-
+    
 # Create service instance
 portfolio_analyzer = AdvancedPortfolioAnalyzer()
 

@@ -1325,3 +1325,60 @@ ALTER DEFAULT PRIVILEGES FOR ROLE avnadmin IN SCHEMA public GRANT SELECT,INSERT,
 
 \unrestrict ixpiHC2H6zQQxND1g9RI1N4yFHtbGduBp64PwsP3hj4waFGy9YhtWKjf9aUHNrQ
 
+
+--
+-- Count of all records in all tables
+--
+with final_tbl as
+(
+ 
+SELECT 'accounts' as tblname, count(1) from accounts
+UNION ALL
+SELECT 'agent_workflows' as tblname, count(1) from agent_workflows
+UNION ALL
+SELECT 'ai_messages' as tblname, count(1) from ai_messages
+UNION ALL
+SELECT 'ai_sessions' as tblname, count(1) from ai_sessions
+UNION ALL
+SELECT 'audit_trail' as tblname, count(1) from audit_trail
+UNION ALL
+SELECT 'compliance_checks' as tblname, count(1) from compliance_checks
+UNION ALL
+SELECT 'economic_indicators' as tblname, count(1) from economic_indicators
+UNION ALL
+SELECT 'executions' as tblname, count(1) from executions
+UNION ALL
+SELECT 'fundamental_data' as tblname, count(1) from fundamental_data
+UNION ALL
+SELECT 'kyc_status' as tblname, count(1) from kyc_status
+UNION ALL
+SELECT 'market_data' as tblname, count(1) from market_data
+UNION ALL
+SELECT 'portfolio_assets' as tblname, count(1) from portfolio_assets
+UNION ALL
+SELECT 'portfolio_metrics' as tblname, count(1) from portfolio_metrics
+UNION ALL
+SELECT 'portfolios' as tblname, count(1) from portfolios
+UNION ALL
+SELECT 'positions' as tblname, count(1) from positions
+UNION ALL
+SELECT 'recommendations' as tblname, count(1) from recommendations
+UNION ALL
+SELECT 'risk_profiles' as tblname, count(1) from risk_profiles
+UNION ALL
+SELECT 'securities' as tblname, count(1) from securities
+UNION ALL
+SELECT 'transactions' as tblname, count(1) from transactions
+UNION ALL
+SELECT 'user_preferences' as tblname, count(1) from user_preferences
+UNION ALL
+SELECT 'user_profiles' as tblname, count(1) from user_profiles
+UNION ALL
+SELECT 'users' as tblname, count(1) from users
+)
+
+select 
+	*
+from
+	final_tbl 
+order by 2 desc

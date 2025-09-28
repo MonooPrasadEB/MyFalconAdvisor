@@ -1,19 +1,27 @@
-from myfalconadvisor.tools.database_service import DatabaseService
-from pathlib import Path
 import os
+import sys
+from pathlib import Path
+
+# Add the parent directory to path
+sys.path.append(str(Path(__file__).parent.parent))
+
+from myfalconadvisor.tools.database_service import DatabaseService
 
 def load_env():
     """Load environment variables from .env file."""
-    env_file = Path(__file__).parent / ".env"
+    env_file = Path(__file__).parent.parent / ".env"
     if env_file.exists():
+        print(f"Loading environment from {env_file}")
         with open(env_file) as f:
             for line in f:
                 if line.strip() and not line.startswith("#"):
                     try:
                         key, value = line.strip().split("=", 1)
-                        os.environ[key] = value
+                        os.environ[key] = value.strip('"').strip("'")
                     except ValueError:
                         continue
+    else:
+        print(f"Error: .env file not found at {env_file}")
 
 def check_db_state():
     load_env()
@@ -33,7 +41,7 @@ def check_db_state():
         if tx.get('broker_reference'):
             print(f"Broker Ref: {tx['broker_reference']}")
     
-    # Check portfolio for main user
+    # Check portfolios
     main_user_id = "7baa7c7c-e0b0-4e4f-8e4d-1d1c8a92e7b8"  # Main test user
     portfolios = db.get_user_portfolios(main_user_id)
     print(f"\nPortfolios for main user: {len(portfolios)} records")

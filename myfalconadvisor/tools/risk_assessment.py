@@ -26,7 +26,7 @@ except ImportError:
     warnings.warn("empyrical not available - some risk metrics disabled")
 
 from ..core.config import Config
-from .market_data import market_data_service
+# Market data now comes from Alpaca directly
 
 config = Config.get_instance()
 logger = logging.getLogger(__name__)
@@ -120,7 +120,8 @@ class AdvancedRiskAssessmentService:
     """Advanced risk assessment with quantitative models."""
     
     def __init__(self):
-        self.market_data = market_data_service
+        # Market data now comes from Alpaca directly
+        self.market_data = None
         self.risk_free_rate = config.risk_free_rate
         
         # Standard risk scenarios

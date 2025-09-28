@@ -13,13 +13,14 @@ from langchain_openai import ChatOpenAI
 from langchain_core.tools import BaseTool
 
 from ..tools.portfolio_analyzer import portfolio_analysis_tool
-from ..tools.risk_assessment import risk_assessment_tool, stress_test_tool, risk_scenario_tool
-from ..tools.market_data import market_data_tool
+from ..tools.risk_assessment import risk_assessment_tool, risk_scenario_tool
+from ..tools.alpaca_trading_service import alpaca_trading_service
 from ..tools.chat_logger import log_advisor_response
 from ..core.config import Config
+from ..core.logging_config import get_multi_task_logger
 
 config = Config.get_instance()
-logger = logging.getLogger(__name__)
+logger = get_multi_task_logger()
 
 
 class MultiTaskAgent:
@@ -42,9 +43,7 @@ class MultiTaskAgent:
         self.tools = [
             portfolio_analysis_tool,
             risk_assessment_tool,
-            stress_test_tool,
-            risk_scenario_tool,
-            market_data_tool
+            risk_scenario_tool
         ]
         
         self.system_prompt = self._create_system_prompt()
@@ -88,9 +87,7 @@ You combine the analytical rigor of a quantitative analyst with the communicatio
 ## Tools Available:
 1. Portfolio Analysis - Comprehensive portfolio evaluation with optimization
 2. Risk Assessment - Risk profiling and tolerance evaluation
-3. Stress Testing - Scenario analysis and stress testing
-4. Market Data - Real-time market data and historical analysis
-5. Risk Scenarios - Interactive risk scenario generation
+3. Risk Scenarios - Interactive risk scenario generation
 
 ## Communication Style:
 - Professional yet approachable

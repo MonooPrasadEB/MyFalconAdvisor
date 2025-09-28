@@ -52,12 +52,15 @@ def run_test_suite(test_file, suite_name):
         # Parse results from output
         output_lines = result.stdout.split('\n')
         
-        # Look for score line
+        # Look for score line - handle multiple formats
         score_info = {"passed": 0, "total": 0, "percentage": 0}
         for line in output_lines:
-            if "tests passed" in line and "%" in line:
+            # Format 1: "3/6 tests passed (50.0%)"
+            # Format 2: "📊 Overall Score: 4/4 (100.0%)"
+            # Format 3: "📊 Multi-Client Score: 5/5 (100.0%)"
+            if ("tests passed" in line or "Overall Score:" in line or "Multi-Client Score:" in line) and "%" in line:
                 try:
-                    # Extract numbers from lines like "3/6 tests passed (50.0%)"
+                    # Extract numbers from lines with X/Y format
                     parts = line.split()
                     for i, part in enumerate(parts):
                         if "/" in part:
@@ -158,16 +161,22 @@ def check_system_prerequisites():
     
     # Check required packages
     required_packages = [
-        "langchain", "openai", "alpaca-py", "psycopg2", 
-        "pandas", "numpy", "requests", "pydantic"
+        ("langchain", "langchain"),
+        ("openai", "openai"), 
+        ("alpaca-py", "alpaca"),  # Package name vs import name
+        ("psycopg2", "psycopg2"), 
+        ("pandas", "pandas"),
+        ("numpy", "numpy"),
+        ("requests", "requests"),
+        ("pydantic", "pydantic")
     ]
     
     missing_packages = []
-    for package in required_packages:
+    for display_name, import_name in required_packages:
         try:
-            __import__(package.replace("-", "_"))
+            __import__(import_name)
         except ImportError:
-            missing_packages.append(package)
+            missing_packages.append(display_name)
     
     if not missing_packages:
         print(f"✅ Required packages: All {len(required_packages)} packages installed")
@@ -183,6 +192,8 @@ def main():
     print("🧪 MyFalconAdvisor Complete Test Suite")
     print("=" * 80)
     print(f"🕐 Started at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    print("🛡️  PRODUCTION DATABASE PROTECTION: Tests use READ-ONLY operations")
+    print("=" * 80)
     
     # Check prerequisites
     prereq_score = check_system_prerequisites()
@@ -192,7 +203,8 @@ def main():
         ("tests/test_database_connection.py", "Database Connection"),
         ("tests/test_alpaca_integration.py", "Alpaca Integration"),
         ("tests/test_ai_agents.py", "AI Agents"),
-        ("tests/test_multi_client_system.py", "Multi-Client System")
+        ("tests/test_complete_logging_workflow_readonly.py", "Complete Logging Workflow (READ-ONLY)"),
+        ("tests/test_multi_client_system_readonly.py", "Multi-Client System (READ-ONLY)")
     ]
     
     results = {}

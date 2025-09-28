@@ -172,7 +172,7 @@ class AdvancedRiskAssessmentService:
         overconfidence = self._calculate_overconfidence(investment_experience, risk_comfort)
         
         return RiskProfile(
-            user_id=f"user_{datetime.now().timestamp()}",
+            user_id=user_id or f"test_user_{datetime.now().timestamp()}",
             assessment_date=datetime.now(),
             age=age,
             annual_income=annual_income,

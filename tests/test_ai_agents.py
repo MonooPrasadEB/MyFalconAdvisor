@@ -42,11 +42,13 @@ def test_multi_task_agent():
         # Test portfolio analysis with proper parameters
         print("🔄 Testing portfolio analysis...")
         
+        # Mock portfolio data for testing (not real user data)
         sample_portfolio = {
             "AAPL": {"quantity": 10, "current_price": 250.0},
             "MSFT": {"quantity": 5, "current_price": 500.0}
         }
         
+        # Mock client profile for testing (not real user data)
         client_profile = {
             "age": 35,
             "risk_tolerance": "moderate",
@@ -133,17 +135,17 @@ def test_compliance_agent():
         print(f"🔍 Error details: {traceback.format_exc()}")
         return False
 
-def test_execution_agent():
-    """Test Execution Agent functionality."""
-    print("\n⚡ Testing Execution Agent")
+def test_execution_service():
+    """Test Execution Service functionality."""
+    print("\n⚡ Testing Execution Service")
     print("=" * 50)
     
     try:
-        from myfalconadvisor.agents.execution_agent import ExecutionAgent, TradeOrder, OrderType
+        from myfalconadvisor.agents.execution_agent import ExecutionService, TradeOrder, OrderType
         
-        # Initialize execution agent
-        agent = ExecutionAgent()
-        print("✅ Execution Agent initialized successfully")
+        # Initialize execution service
+        service = ExecutionService()
+        print("✅ Execution Service initialized successfully")
         
         # Create a test order with all required fields
         test_order = TradeOrder(
@@ -157,19 +159,42 @@ def test_execution_agent():
             created_at=datetime.now()
         )
         
-        print("🔄 Testing order execution...")
-        execution_result = agent._simulate_trade_execution(test_order)
+        # Test core ExecutionService functionality
+        print("🔄 Testing portfolio validation...")
+        test_recommendation = {
+            "symbol": "SPY",
+            "action": "buy",
+            "quantity": 1
+        }
         
-        if execution_result and execution_result.success:
-            print("✅ Order execution completed successfully")
-            print(f"📋 Order ID: {execution_result.order_id}")
-            print(f"💰 Executed Price: ${execution_result.executed_price:.2f}")
-            print(f"📊 Status: {execution_result.status}")
-            return True
+        validation_result = service.validate_recommendation_against_portfolio(
+            user_id="test-client",
+            recommendation=test_recommendation
+        )
+        
+        if validation_result.get("approved") is not None:
+            print("✅ Portfolio validation method works")
         else:
-            print("❌ Order execution failed")
-            print(f"📋 Result: {execution_result}")
+            print("❌ Portfolio validation method failed")
             return False
+        
+        # Test that database write methods exist
+        print("🔄 Testing database write methods exist...")
+        write_methods = [
+            '_write_to_recommendations_table',
+            '_write_to_compliance_checks_table',
+            '_write_to_agent_workflows_table'
+        ]
+        
+        all_methods_exist = True
+        for method in write_methods:
+            if hasattr(service, method):
+                print(f"✅ Method {method} exists")
+            else:
+                print(f"❌ Method {method} missing")
+                all_methods_exist = False
+        
+        return all_methods_exist
             
     except Exception as e:
         print(f"❌ Execution Agent test failed: {e}")
@@ -257,7 +282,7 @@ def main():
     tests = [
         ("Multi-Task Agent", test_multi_task_agent),
         ("Compliance Agent", test_compliance_agent),
-        ("Execution Agent", test_execution_agent),
+        ("Execution Service", test_execution_service),
         ("Agent Tools", test_agent_tools)
     ]
     

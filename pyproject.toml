@@ -80,6 +80,9 @@ dependencies = [
     # Configuration and Environment
     "python-dotenv>=1.0.0",
     
+    # Background Jobs and Scheduling
+    "schedule>=1.2.0",
+    
     # CLI Tools
     "click>=8.1.0",
     "rich>=13.0.0",

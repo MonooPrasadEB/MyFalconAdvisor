@@ -20,7 +20,7 @@ from langgraph.graph.message import add_messages
 from langgraph.prebuilt import create_react_agent
 
 from ..agents.multi_task_agent import multi_task_agent
-from ..agents.execution_agent import execution_agent
+from ..agents.execution_agent import execution_service
 from ..agents.compliance_reviewer import compliance_reviewer_agent
 from ..core.config import Config
 from ..tools.chat_logger import chat_logger, log_user_message, log_supervisor_action
@@ -74,7 +74,7 @@ class InvestmentAdvisorSupervisor:
         
         # Agent instances
         self.multi_task_agent = multi_task_agent
-        self.execution_agent = execution_agent 
+        self.execution_service = execution_service 
         self.compliance_reviewer = compliance_reviewer_agent
         
         # Create the workflow graph
@@ -94,8 +94,8 @@ class InvestmentAdvisorSupervisor:
         
         trade_agent = create_react_agent(
             self.llm,
-            self.execution_agent.get_tools(),
-            prompt=self.execution_agent.get_system_message()
+            [],  # ExecutionService doesn't have tools anymore
+            prompt="ExecutionService: Non-AI workflow service for trade execution and portfolio validation."
         )
         
         compliance_agent = create_react_agent(
@@ -154,7 +154,7 @@ class InvestmentAdvisorSupervisor:
         
         # Use LLM-powered intelligent routing
         if isinstance(last_message, HumanMessage):
-            content = last_message.content.lower()
+            content = last_message.content.lower() if last_message.content else ""
             
             # Handle approval responses - route directly to compliance
             if "approve" in content and state.get("requires_approval"):
@@ -412,7 +412,7 @@ Return ONLY the JSON object or null:
                     pass
                     
             # Check for null response
-            if "null" in response.content.lower():
+            if response.content and "null" in response.content.lower():
                 return None
                 
             return None
@@ -580,7 +580,7 @@ Format your response as a clear, professional trade execution analysis.
         
         messages = state["messages"]
         trade_recommendations = state.get("trade_recommendations", [])
-        last_message = messages[-1].content.lower() if messages else ""
+        last_message = messages[-1].content.lower() if messages and messages[-1].content else ""
         
         # Check if user just approved a trade
         if "approve" in last_message and trade_recommendations:
@@ -816,7 +816,7 @@ Format your response as a clear, professional trade execution analysis.
             # Calculate key portfolio metrics for LLM context
             total_value = portfolio_data.get('total_value', 0)
             tech_allocation = sum(asset.get('allocation', 0) for asset in assets 
-                                if asset.get('sector', '').lower().startswith('tech'))
+                                if asset.get('sector') and asset.get('sector', '').lower().startswith('tech'))
             num_assets = len(assets)
             max_allocation = max([asset.get('allocation', 0) for asset in assets]) if assets else 0
             

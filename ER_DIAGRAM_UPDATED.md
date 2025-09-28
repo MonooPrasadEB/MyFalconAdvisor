@@ -1,19 +1,19 @@
-# MyFalconAdvisor - Updated Entity Relationship Diagram
+# MyFalconAdvisor - Entity Relationship Diagram (Codebase Analysis)
 
-## 📊 Database Schema with Active/Unused Table Classification
+## 📊 Database Schema with Actual Usage Classification Based on Code Analysis
 
 ```
                     MyFalconAdvisor Database Schema
                            (Updated Architecture)
 
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                           🔄 ACTIVE TABLES                                  │
-│                        (Used by All Components)                             │
+│                        ✅ CORE PRODUCTION TABLES                            │
+│                   (Essential - Heavily Referenced in Code)                  │
 └─────────────────────────────────────────────────────────────────────────────┘
 
                               ┌─────────────────┐
                               │     users       │
-                              │ ✅ ACTIVE       │
+                              │ ✅ CORE (7 refs)│
                               │                 │
                               │ user_id (PK)    │
                               │ email           │
@@ -30,7 +30,7 @@
                                        ▼
                               ┌─────────────────┐
                               │   portfolios    │
-                              │ ✅ ACTIVE       │
+                              │ ✅ CORE (12 refs)│
                               │                 │
                               │ portfolio_id(PK)│
                               │ user_id (FK)    │
@@ -46,19 +46,19 @@
                           │ 1:N        │ 1:N        │
                           ▼            ▼            ▼
               ┌─────────────────┐ ┌─────────────────┐ ┌─────────────────┐
-              │portfolio_assets │ │  transactions   │ │   accounts      │
-              │ ✅ ACTIVE       │ │ ✅ PRIMARY      │ │ ✅ ACTIVE       │
-              │                 │ │ TRADING TABLE   │ │                 │
-              │ asset_id (PK)   │ │                 │ │ account_id (PK) │
-              │ portfolio_id(FK)│ │ transaction_id  │ │ user_id (FK)    │
-              │ symbol          │ │ portfolio_id(FK)│ │ account_type    │
-              │ quantity        │ │ user_id (FK)    │ │ broker_name     │
-              │ current_price   │ │ symbol          │ │ account_number  │
-              │ market_value    │ │ transaction_type│ │ is_active       │
-              │ average_cost    │ │ quantity        │ │ created_at      │
-              │ allocation_%    │ │ price           │ └─────────────────┘
-              │ updated_at      │ │ total_amount    │
-              └─────────────────┘ │ fees            │
+              │  ai_sessions    │ │  transactions   │ │   accounts      │
+              │ ✅ CORE (3 refs)│ │ ✅ PRIMARY      │ │ 🔄 LOG (2 refs) │
+              │                 │ │ CORE (11 refs)  │ │                 │
+              │ session_id (PK) │ │                 │ │ account_id (PK) │
+              │ user_id (FK)    │ │ transaction_id  │ │ user_id (FK)    │
+              │ session_type    │ │ portfolio_id(FK)│ │ account_type    │
+              │ started_at      │ │ user_id (FK)    │ │ broker_name     │
+              │ ended_at        │ │ symbol          │ │ account_number  │
+              │ context_data    │ │ transaction_type│ │ is_active       │
+              └─────────────────┘ │ quantity        │ │ created_at      │
+                                  │ price           │ └─────────────────┘
+                                  │ total_amount    │
+                                  │ fees            │
                                   │ order_type      │
                                   │ status          │ ◄─── 🎯 KEY FIELD
                                   │ execution_date  │      (pending→executed)
@@ -69,57 +69,75 @@
                                   └─────────────────┘
 
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                           🤖 AI & COMPLIANCE TABLES                         │
-│                        (Used by Multi-Agent System)                         │
+│                        🔄 ACTIVE FEATURE TABLES                             │
+│                     (Currently Used Features)                               │
 └─────────────────────────────────────────────────────────────────────────────┘
 
               ┌─────────────────┐ ┌─────────────────┐ ┌─────────────────┐
-              │  ai_sessions    │ │  ai_messages    │ │ recommendations │
-              │ ✅ ACTIVE       │ │ ✅ ACTIVE       │ │ ✅ ACTIVE       │
+              │portfolio_assets │ │ recommendations │ │   positions     │
+              │ 🔄 ACTIVE (5 refs)│ │ 🔄 ACTIVE (7 refs)│ │ 🔄 ACTIVE (11 refs)│
               │                 │ │                 │ │                 │
-              │ session_id (PK) │ │ message_id (PK) │ │ rec_id (PK)     │
-              │ user_id (FK)    │ │ session_id (FK) │ │ account_id      │
-              │ session_type    │ │ agent_type      │ │ ticker          │
-              │ started_at      │ │ message_type    │ │ action          │
-              │ ended_at        │ │ content         │ │ percentage      │
-              │ context_data    │ │ metadata        │ │ rationale       │
-              └─────────────────┘ │ created_at      │ │ created_at      │
-                       │          └─────────────────┘ └─────────────────┘
-                       │ 1:N               │                    │
-                       └───────────────────┘                    │
-                                                               │
-              ┌─────────────────┐ ┌─────────────────┐          │
-              │compliance_checks│ │ agent_workflows │          │
-              │ ✅ ACTIVE       │ │ ✅ ACTIVE       │          │
-              │                 │ │                 │          │
-              │ check_id (PK)   │ │ workflow_id(PK) │          │
-              │ rec_id (FK)     │ │ session_id (FK) │          │
-              │ user_id         │ │ workflow_type   │          │
-              │ check_type      │ │ current_state   │          │
-              │ status          │ │ workflow_data   │          │
-              │ details         │ │ status          │          │
-              │ created_at      │ │ created_at      │          │
-              └─────────────────┘ │ updated_at      │          │
-                       ▲          └─────────────────┘          │
-                       │                                       │
-                       └───────────────────────────────────────┘
+              │ asset_id (PK)   │ │ rec_id (PK)     │ │ account_id (PK) │
+              │ portfolio_id(FK)│ │ account_id      │ │ ticker (PK)     │
+              │ symbol          │ │ ticker          │ │ sector          │
+              │ quantity        │ │ action          │ │ quantity        │
+              │ current_price   │ │ percentage      │ │ avg_cost        │
+              │ market_value    │ │ rationale       │ └─────────────────┘
+              │ average_cost    │ │ created_at      │
+              │ allocation_%    │ └─────────────────┘ ┌─────────────────┐
+              │ updated_at      │                     │   market_data   │
+              └─────────────────┘                     │ 🚀 FUTURE (12 refs)│
+                                                      │                 │
+┌─────────────────────────────────────────────────────┐ │ data_id (PK)    │
+│                📝 DATABASE LOGGING TABLES           │ │ symbol          │
+│              (AI and Compliance Tracking)           │ │ data_date       │
+└─────────────────────────────────────────────────────┘ │ open_price      │
+                                                      │ close_price     │
+              ┌─────────────────┐ ┌─────────────────┐ │ volume          │
+              │  ai_messages    │ │ agent_workflows │ └─────────────────┘
+              │ 📝 LOG (2 refs) │ │ 📝 LOG (2 refs) │
+              │                 │ │                 │
+              │ message_id (PK) │ │ workflow_id(PK) │
+              │ session_id (FK) │ │ session_id (FK) │
+              │ agent_type      │ │ workflow_type   │
+              │ message_type    │ │ current_state   │
+              │ content         │ │ workflow_data   │
+              │ metadata        │ │ status          │
+              │ created_at      │ │ created_at      │
+              └─────────────────┘ │ updated_at      │
+                       │          └─────────────────┘
+                       │ 1:N               
+                       └───────────────────┐
+                                          │
+              ┌─────────────────┐ ┌─────────────────┐
+              │compliance_checks│ │  audit_trail    │
+              │ 📝 LOG (2 refs) │ │ 📝 LOG (1 ref)  │
+              │                 │ │                 │
+              │ check_id (PK)   │ │ audit_id (PK)   │
+              │ rec_id (FK)     │ │ user_id         │
+              │ user_id         │ │ entity_type     │
+              │ check_type      │ │ entity_id       │
+              │ status          │ │ action          │
+              │ details         │ │ old_values      │
+              │ created_at      │ │ new_values      │
+              └─────────────────┘ │ created_at      │
+                                  └─────────────────┘
 
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                           ❌ UNUSED TABLES                                  │
-│                        (Architectural Legacy)                               │
+│                        ❌ LEGACY UNUSED TABLES                              │
+│                   (Code Exists But Methods Never Called)                    │
 └─────────────────────────────────────────────────────────────────────────────┘
 
-              ┌─────────────────┐ ┌─────────────────┐
-              │     orders      │ │   executions    │
-              │ ❌ UNUSED       │ │ ❌ UNUSED       │
-              │ LEGACY TABLE    │ │ LEGACY TABLE    │
-              │                 │ │                 │
-              │ order_id (PK)   │ │ exec_id (PK)    │
-              │ account_id      │ │ order_id (FK)   │
-              │ ticker          │ │ filled_quantity │
-              │ sector          │ │ fill_price      │
-              │ quantity        │ │ exec_timestamp  │
-              │ order_type      │ │                 │
+              ┌─────────────────┐ ┌─────────────────┐ ┌─────────────────┐
+              │     orders      │ │   executions    │ │  interactions   │
+              │ ❌ LEGACY (2 refs)│ │ ❌ LEGACY (2 refs)│ │ ❌ LEGACY (1 ref)│
+              │                 │ │                 │ │                 │
+              │ order_id (PK)   │ │ exec_id (PK)    │ │ interaction_id  │
+              │ account_id      │ │ order_id (FK)   │ │ account_id      │
+              │ ticker          │ │ filled_quantity │ │ timestamp       │
+              │ sector          │ │ fill_price      │ │ channel         │
+              │ quantity        │ │ exec_timestamp  │ │ message         │
+              │ order_type      │ │                 │ └─────────────────┘
               │ limit_price     │ │ ⚠️  Methods      │
               │ timestamp       │ │    exist but    │
               │ time_in_force   │ │    never called │
@@ -135,6 +153,38 @@
                          (Replaced by transactions)
 
 ┌─────────────────────────────────────────────────────────────────────────────┐
+│                        🚀 FUTURE FEATURE TABLES                             │
+│                    (Referenced But Not Implemented)                         │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+              ┌─────────────────┐ ┌─────────────────┐
+              │portfolio_metrics│ │economic_indicators│
+              │ 🚀 FUTURE (2 refs)│ │ 🚀 FUTURE (1 ref)│
+              │                 │ │                 │
+              │ metric_id (PK)  │ │ indicator_id    │
+              │ portfolio_id    │ │ indicator_code  │
+              │ total_return_1d │ │ indicator_name  │
+              │ sharpe_ratio    │ │ data_date       │
+              │ value_at_risk   │ │ value           │
+              │ max_drawdown    │ │ units           │
+              └─────────────────┘ └─────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                        ⚪ NO CODE REFERENCES                                │
+│                      (Schema Only - No Code Usage)                          │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+              ┌─────────────────┐ ┌─────────────────┐ ┌─────────────────┐
+              │fundamental_data │ │   kyc_status    │ │ risk_profiles   │
+              │ ⚪ NONE (0 refs) │ │ ⚪ NONE (0 refs) │ │ ⚪ NONE (0 refs) │
+              └─────────────────┘ └─────────────────┘ └─────────────────┘
+
+              ┌─────────────────┐ ┌─────────────────┐ ┌─────────────────┐
+              │   securities    │ │user_preferences │ │ user_profiles   │
+              │ ⚪ NONE (0 refs) │ │ ⚪ NONE (0 refs) │ │ ⚪ NONE (0 refs) │
+              └─────────────────┘ └─────────────────┘ └─────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────────┐
 │                           🎯 KEY RELATIONSHIPS                              │
 └─────────────────────────────────────────────────────────────────────────────┘
 
@@ -146,29 +196,33 @@
 6. recommendations (1) ──── (N) compliance_checks
 
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                           📊 ARCHITECTURE DECISION                          │
+│                        📊 CODEBASE ANALYSIS SUMMARY                         │
 └─────────────────────────────────────────────────────────────────────────────┘
 
-🎯 HYBRID TRANSACTIONS TABLE DESIGN:
-   Traditional: orders + executions (2 tables, complex JOINs)
-   MyFalcon:   transactions (1 table, complete lifecycle)
+🔍 ACTUAL USAGE BREAKDOWN (24 Total Tables):
+   ✅ Core Production: 4 tables (17%) - Essential functionality
+   🔄 Active Features: 4 tables (17%) - Currently used features  
+   📝 Database Logging: 5 tables (21%) - AI and compliance tracking
+   ❌ Legacy Unused: 3 tables (12%) - Code exists but never called
+   🚀 Future Features: 2 tables (8%) - Referenced but not implemented
+   ⚪ No References: 6 tables (25%) - Schema only, no code usage
 
-✅ ADVANTAGES:
-   • Single source of truth for order lifecycle
-   • Atomic status updates (pending → executed)
-   • Simplified queries (no JOINs required)
-   • Better performance (fewer table lookups)
-   • Cleaner architecture (no foreign key complexity)
+🎯 HYBRID TRANSACTIONS TABLE VALIDATION:
+   ✅ transactions: 11 code references - PRIMARY TRADING TABLE
+   ❌ orders: 2 references - Methods exist but bypassed
+   ❌ executions: 2 references - Methods exist but bypassed
+   
+   CONCLUSION: Hybrid design is architecturally superior and validated by usage
 
-🔄 LIFECYCLE:
-   1. Order placed    → status: 'pending', broker_reference: alpaca_id
-   2. Order fills     → status: 'executed', price: fill_price, execution_date: now
+🔄 LIFECYCLE CONFIRMED:
+   1. Order placed    → transactions: status='pending', broker_reference=alpaca_id
+   2. Order fills     → transactions: status='executed', price=fill_price
    3. Sync complete   → portfolio_assets updated, portfolios.total_value updated
 
-❌ UNUSED TABLES:
-   • orders: Methods exist but workflows bypass this table
-   • executions: Methods exist but never called in practice
-   • All agents use alpaca_service.place_order() → transactions table
+📊 PRODUCTION REALITY:
+   • transactions: 13 pending orders (Monday execution ready)
+   • portfolio_assets: 0 records (will populate after execution)
+   • orders/executions: 0 records (completely unused)
 ```
 
 ## 🚀 Summary

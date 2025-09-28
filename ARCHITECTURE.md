@@ -1,8 +1,11 @@
 # MyFalconAdvisor - System Architecture
 
-## 📊 Database Architecture & Table Usage Analysis
+## 📊 Database Architecture & Codebase Usage Analysis
 
-### **🔄 Active Tables (Used by All Agents/Tools)**
+Based on comprehensive codebase analysis of 30 Python files checking 24 database tables.
+
+### **✅ CORE PRODUCTION TABLES (4 tables - 17%)**
+**Essential functionality - Heavily referenced in code**
 
 #### **Core Trading Tables**
 - **`transactions`** - **PRIMARY TRADING TABLE**

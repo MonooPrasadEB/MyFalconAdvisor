@@ -119,7 +119,7 @@ class ExecutionService:
         # Order management (in-memory state)
         self.pending_orders: Dict[str, TradeOrder] = {}
         self.executed_orders: Dict[str, TradeOrder] = {}
-    
+        
     def validate_recommendation_against_portfolio(self, user_id: str, recommendation: Dict) -> Dict:
         """
         Validate AI recommendation against actual user portfolio data from database.
@@ -724,7 +724,7 @@ class ExecutionService:
             "Wait for better market conditions",
             "Cancel and resubmit with different parameters"
         ]
-    
+
     def _write_to_orders_table(self, order: TradeOrder) -> str:
         """Write order to the orders table."""
         try:

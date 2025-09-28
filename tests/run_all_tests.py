@@ -191,6 +191,8 @@ def main():
     print("🧪 MyFalconAdvisor Complete Test Suite")
     print("=" * 80)
     print(f"🕐 Started at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    print("🛡️  PRODUCTION DATABASE PROTECTION: Tests use READ-ONLY operations")
+    print("=" * 80)
     
     # Check prerequisites
     prereq_score = check_system_prerequisites()
@@ -200,8 +202,8 @@ def main():
         ("tests/test_database_connection.py", "Database Connection"),
         ("tests/test_alpaca_integration.py", "Alpaca Integration"),
         ("tests/test_ai_agents.py", "AI Agents"),
-        ("tests/test_complete_logging_workflow.py", "Complete Logging Workflow"),
-        ("tests/test_multi_client_system.py", "Multi-Client System")
+        ("tests/test_complete_logging_workflow_readonly.py", "Complete Logging Workflow (READ-ONLY)"),
+        ("tests/test_multi_client_system_readonly.py", "Multi-Client System (READ-ONLY)")
     ]
     
     results = {}

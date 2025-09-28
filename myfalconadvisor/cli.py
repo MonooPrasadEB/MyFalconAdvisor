@@ -26,6 +26,7 @@ from .core.supervisor import investment_advisor_supervisor
 from .core.config import Config
 from .tools.trade_simulator import trade_simulator
 from .tools.database_service import DatabaseService
+from .tools.simple_portfolio_sync import simple_portfolio_sync
 from sqlalchemy import text
 
 console = Console()
@@ -65,6 +66,8 @@ class InvestmentAdvisorCLI:
             self.simulate_database_trade(args.symbol, args.action, args.quantity)
         elif args.command == "transactions":
             self.show_my_transactions(args.limit)
+        elif args.command == "sync":
+            self.handle_sync_command(args)
         else:
             parser.print_help()
     
@@ -82,6 +85,9 @@ Examples:
   %(prog)s rebalance
   %(prog)s simulate --symbol AAPL --action buy --quantity 10
   %(prog)s transactions --limit 20
+  %(prog)s sync pending
+  %(prog)s sync now
+  %(prog)s sync start
   %(prog)s validate
             """
         )
@@ -116,6 +122,16 @@ Examples:
         # User-specific commands
         transactions_parser = subparsers.add_parser("transactions", help="Show your recent transactions")
         transactions_parser.add_argument("--limit", type=int, default=20, help="Number of transactions to show (default: 20)")
+        
+        # Portfolio sync commands
+        sync_parser = subparsers.add_parser("sync", help="Portfolio synchronization commands")
+        sync_subparsers = sync_parser.add_subparsers(dest="sync_action", help="Sync actions")
+        
+        sync_subparsers.add_parser("now", help="Sync your portfolio immediately")
+        sync_subparsers.add_parser("status", help="Check sync service status")
+        sync_subparsers.add_parser("start", help="Start background sync service")
+        sync_subparsers.add_parser("stop", help="Stop background sync service")
+        sync_subparsers.add_parser("pending", help="Check pending orders")
         
         return parser
     
@@ -1108,6 +1124,151 @@ Examples:
         except Exception as e:
             console.print(f"[yellow]⚠️ Could not fetch user info: {str(e)}[/yellow]")
             return None
+    
+    def handle_sync_command(self, args):
+        """Handle portfolio sync commands."""
+        if not hasattr(args, 'sync_action') or args.sync_action is None:
+            console.print("[yellow]Please specify a sync action: now, status, start, stop, or pending[/yellow]")
+            return
+            
+        if args.sync_action == "now":
+            self.sync_portfolio_now()
+        elif args.sync_action == "status":
+            self.show_sync_status()
+        elif args.sync_action == "start":
+            self.start_sync_service()
+        elif args.sync_action == "stop":
+            self.stop_sync_service()
+        elif args.sync_action == "pending":
+            self.show_pending_orders()
+        else:
+            console.print(f"[red]Unknown sync action: {args.sync_action}[/red]")
+    
+    def sync_portfolio_now(self):
+        """Manually sync portfolio immediately."""
+        console.print("🔄 Syncing your portfolio with Alpaca...")
+        
+        try:
+            with Progress(
+                SpinnerColumn(),
+                TextColumn("[progress.description]{task.description}"),
+                console=console
+            ) as progress:
+                task = progress.add_task("Synchronizing portfolio...", total=None)
+                
+                result = simple_portfolio_sync.sync_user_now(self.current_user_id)
+                
+                progress.update(task, completed=True)
+            
+            if result.get("success"):
+                console.print(f"✅ {result['message']}")
+                
+                # Show synced portfolios
+                if result.get("portfolios"):
+                    table = Table(title="Synced Portfolios")
+                    table.add_column("Portfolio ID", style="cyan")
+                    table.add_column("Name", style="green")
+                    table.add_column("Status", style="yellow")
+                    
+                    for portfolio in result["portfolios"]:
+                        table.add_row(
+                            portfolio["portfolio_id"][:8] + "...",
+                            portfolio["portfolio_name"],
+                            portfolio["status"]
+                        )
+                    
+                    console.print(table)
+            else:
+                console.print(f"❌ Sync failed: {result.get('error')}")
+                
+        except Exception as e:
+            console.print(f"[red]❌ Error syncing portfolio: {str(e)}[/red]")
+    
+    def show_sync_status(self):
+        """Show current sync service status."""
+        try:
+            status = simple_portfolio_sync.get_sync_status()
+            
+            # Create status panel
+            status_text = f"""
+🔄 **Service Status:** {'🟢 Running' if status['is_running'] else '🔴 Stopped'}
+📈 **Market Hours:** {'🟢 Yes' if status['market_hours'] else '🔴 No'}
+📅 **Weekend:** {'🟢 Yes' if status['is_weekend'] else '🔴 No'}
+⏰ **Next Sync:** {status['next_sync']}
+📋 **Scheduled Jobs:** {status['scheduled_jobs']}
+            """
+            
+            console.print(Panel(status_text, title="Portfolio Sync Status", border_style="blue"))
+            
+        except Exception as e:
+            console.print(f"[red]❌ Error getting sync status: {str(e)}[/red]")
+    
+    def start_sync_service(self):
+        """Start the background sync service."""
+        console.print("ℹ️  Simple sync service doesn't run in background")
+        console.print("💡 Use 'myfalcon sync now' to manually sync your portfolio")
+        console.print("💡 Use 'myfalcon sync pending' to check pending orders")
+    
+    def stop_sync_service(self):
+        """Stop the background sync service."""
+        console.print("ℹ️  Simple sync service doesn't run in background")
+        console.print("💡 No background service to stop")
+    
+    def show_pending_orders(self):
+        """Show pending orders that will be processed when market opens."""
+        try:
+            pending_orders = simple_portfolio_sync.get_pending_orders(self.current_user_id)
+            
+            if not pending_orders:
+                console.print("✅ No pending orders found")
+                return
+            
+            # Create pending orders table
+            table = Table(title=f"Your Pending Orders ({len(pending_orders)} total)")
+            table.add_column("Symbol", style="cyan")
+            table.add_column("Action", style="green")
+            table.add_column("Quantity", style="yellow")
+            table.add_column("Price", style="magenta")
+            table.add_column("Status", style="blue")
+            table.add_column("Submitted", style="dim")
+            table.add_column("Broker Ref", style="dim")
+            
+            total_value = 0
+            for order in pending_orders:
+                price = float(order["price"]) if order["price"] else 0
+                quantity = int(order["quantity"])
+                order_value = price * quantity
+                total_value += order_value
+                
+                table.add_row(
+                    order["symbol"],
+                    order["transaction_type"].upper(),
+                    str(quantity),
+                    f"${price:.2f}" if price > 0 else "Market",
+                    order["status"].upper(),
+                    order["created_at"].strftime("%m/%d %H:%M") if order["created_at"] else "N/A",
+                    order["broker_reference"][:8] + "..." if order["broker_reference"] else "N/A"
+                )
+            
+            console.print(table)
+            
+            if total_value > 0:
+                console.print(f"\n💰 Total pending order value: ${total_value:,.2f}")
+            
+            # Show market status
+            from datetime import datetime, time as dt_time
+            now = datetime.now()
+            market_open = dt_time(9, 30)
+            market_close = dt_time(16, 0)
+            is_market_hours = (market_open <= now.time() <= market_close and now.weekday() < 5)
+            
+            if is_market_hours:
+                console.print("\n🟢 Market is currently OPEN - orders should execute soon!")
+            else:
+                console.print("\n🔴 Market is currently CLOSED - orders will execute when market opens Monday 9:30 AM ET")
+                
+        except Exception as e:
+            console.print(f"[red]❌ Error showing pending orders: {str(e)}[/red]")
 
 
 def main():

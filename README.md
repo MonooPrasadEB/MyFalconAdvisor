@@ -526,15 +526,27 @@ psql -h your_host -U your_user -d myfalconadvisor_db -f all_ddls.sql
 ```
 
 **Database Schema Includes**:
+
+**🔄 Active Tables (Used by System)**:
 - **users**: User profiles with risk tolerance and financial data
 - **portfolios**: User portfolio information and cash balances
 - **portfolio_assets**: Individual holdings and allocations
-- **transactions**: Complete transaction history
+- **transactions**: Complete order lifecycle (intent → execution) - **Primary trading table**
 - **ai_sessions**: AI conversation sessions
 - **ai_messages**: Individual AI interactions
 - **recommendations**: AI-generated investment recommendations
 - **compliance_checks**: Regulatory validation results
 - **agent_workflows**: Multi-agent process tracking
+
+**❌ Unused Tables (Architectural Legacy)**:
+- **orders**: Redundant with transactions table (order intent tracking)
+- **executions**: Redundant with transactions table (execution tracking)
+
+**📊 Architecture Decision**: The `transactions` table serves as a **hybrid design** that combines both order intent and execution results in a single record, eliminating the need for separate `orders` and `executions` tables. This provides:
+- ✅ Single source of truth for trade lifecycle
+- ✅ Simplified queries and better performance  
+- ✅ Atomic updates from pending → executed status
+- ✅ Complete audit trail in one table
 
 ### Testing the System
 

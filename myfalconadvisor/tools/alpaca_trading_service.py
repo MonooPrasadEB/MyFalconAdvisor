@@ -43,6 +43,7 @@ class AlpacaTradingService:
     def __init__(self):
         self.config = config
         self.db_service = DatabaseService()
+        self.mock_mode = False
         
         # Initialize Alpaca clients
         if not config.alpaca_api_key or not config.alpaca_secret_key:
@@ -64,7 +65,6 @@ class AlpacaTradingService:
                     secret_key=config.alpaca_secret_key
                 )
                 
-                self.mock_mode = False
                 logger.info(f"Alpaca API initialized - Paper Trading: {config.alpaca_paper_trading}")
                 
             except Exception as e:
@@ -74,225 +74,108 @@ class AlpacaTradingService:
                 self.mock_mode = True
     
     def test_connection(self) -> Dict:
-        """Test Alpaca API connection and return account info."""
+        """Test connection to Alpaca API."""
         if self.mock_mode:
             return {
-                "connected": False,
+                "connected": True,
                 "mode": "mock",
-                "message": "Running in mock mode - no API keys configured"
+                "message": "Mock mode active - no real API connection"
             }
-        
+            
         try:
             account = self.trading_client.get_account()
-            positions = self.trading_client.get_all_positions()
-            
             return {
                 "connected": True,
-                "mode": "paper" if config.alpaca_paper_trading else "live",
-                "account_id": str(account.id),
-                "account_status": account.status,
-                "buying_power": float(account.buying_power),
+                "mode": "paper" if self.config.alpaca_paper_trading else "live",
+                "account_id": account.id,
+                "status": account.status,
+                "currency": account.currency,
                 "cash": float(account.cash),
-                "portfolio_value": float(account.portfolio_value),
-                "positions_count": len(positions),
-                "day_trade_count": account.day_trade_count,
-                "pattern_day_trader": account.pattern_day_trader
+                "portfolio_value": float(account.portfolio_value)
             }
-            
         except Exception as e:
-            logger.error(f"Alpaca connection test failed: {e}")
+            logger.error(f"Connection test failed: {e}")
             return {
                 "connected": False,
-                "mode": "error",
                 "error": str(e)
             }
     
-    def sync_portfolio_from_alpaca(self, user_id: str, portfolio_id: str) -> Dict:
-        """
-        Synchronize portfolio data from Alpaca to PostgreSQL database.
-        
-        Args:
-            user_id: User identifier in database
-            portfolio_id: Portfolio identifier in database
-        
-        Returns:
-            Dictionary with sync results
-        """
-        if self.mock_mode:
-            return {"error": "Cannot sync in mock mode"}
-        
-        try:
-            # Get account and positions from Alpaca
-            account = self.trading_client.get_account()
-            positions = self.trading_client.get_all_positions()
-            
-            # Update portfolio total value
-            portfolio_update = {
-                "total_value": float(account.portfolio_value),
-                "cash_balance": float(account.cash),
-                "updated_at": datetime.now()
-            }
-            
-            portfolio_updated = self.db_service.update_portfolio(
-                portfolio_id, portfolio_update
-            )
-            
-            if not portfolio_updated:
-                return {"error": "Failed to update portfolio in database"}
-            
-            # Sync positions
-            synced_positions = []
-            for position in positions:
-                # Get current market data for the position
-                current_price = self._get_current_price(position.symbol)
-                
-                asset_data = {
-                    "portfolio_id": portfolio_id,
-                    "symbol": position.symbol,
-                    "asset_name": position.symbol,  # Could enhance with company name lookup
-                    "asset_type": "stock",  # Default to stock, could enhance
-                    "quantity": float(position.qty),
-                    "average_cost": float(position.avg_cost) if position.avg_cost else 0,
-                    "current_price": current_price,
-                    "market_value": float(position.market_value) if position.market_value else 0,
-                    "allocation_percent": (float(position.market_value) / float(account.portfolio_value)) if position.market_value and account.portfolio_value else 0,
-                    "updated_at": datetime.now()
-                }
-                
-                # Update or create position in database
-                position_result = self.db_service.upsert_portfolio_asset(asset_data)
-                if position_result:
-                    synced_positions.append({
-                        "symbol": position.symbol,
-                        "quantity": float(position.qty),
-                        "market_value": float(position.market_value) if position.market_value else 0
-                    })
-            
-            # Create audit trail entry
-            self.db_service.create_audit_entry(
-                user_id=user_id,
-                entity_type="portfolio",
-                entity_id=portfolio_id,
-                action="alpaca_sync",
-                new_values={
-                    "total_value": float(account.portfolio_value),
-                    "positions_count": len(positions),
-                    "sync_timestamp": datetime.now().isoformat()
-                }
-            )
-            
-            return {
-                "success": True,
-                "portfolio_value": float(account.portfolio_value),
-                "cash_balance": float(account.cash),
-                "positions_synced": len(synced_positions),
-                "positions": synced_positions,
-                "sync_timestamp": datetime.now().isoformat()
-            }
-            
-        except Exception as e:
-            logger.error(f"Portfolio sync failed: {e}")
-            return {"error": str(e)}
-    
     def place_order(
-        self,
-        symbol: str,
-        side: str,  # "buy" or "sell"
-        quantity: float,
-        order_type: str = "market",
-        limit_price: Optional[float] = None,
-        stop_price: Optional[float] = None,
-        time_in_force: str = "day",
-        user_id: Optional[str] = None,
-        portfolio_id: Optional[str] = None
-    ) -> Dict:
-        """
-        Place an order through Alpaca API and record in database.
+            self,
+            symbol: str,
+            side: str,  # "buy" or "sell"
+            quantity: float,
+            order_type: str = "market",
+            limit_price: Optional[float] = None,
+            stop_price: Optional[float] = None,
+            time_in_force: str = "day",
+            user_id: Optional[str] = None,
+            portfolio_id: Optional[str] = None
+        ) -> Dict:
+        """Place an order with Alpaca."""
         
-        Args:
-            symbol: Stock symbol
-            side: "buy" or "sell"
-            quantity: Number of shares
-            order_type: "market", "limit", "stop", "stop_limit"
-            limit_price: Price for limit orders
-            stop_price: Price for stop orders
-            time_in_force: "day", "gtc", "ioc", "fok"
-            user_id: User ID for audit trail
-            portfolio_id: Portfolio ID for tracking
-        
-        Returns:
-            Dictionary with order details
-        """
         if self.mock_mode:
-            return self._mock_place_order(symbol, side, quantity, order_type, limit_price)
+            return self._mock_place_order(
+                symbol=symbol,
+                side=side,
+                quantity=quantity,
+                order_type=order_type,
+                limit_price=limit_price
+            )
         
         try:
-            # Convert parameters to Alpaca enums
-            order_side = OrderSide.BUY if side.lower() == "buy" else OrderSide.SELL
-            tif = TimeInForce.DAY if time_in_force.lower() == "day" else TimeInForce.GTC
+            # Normalize parameters
+            side = side.lower()
+            order_type = order_type.lower()
+            time_in_force = time_in_force.lower()
             
-            # Create appropriate order request
-            if order_type.lower() == "market":
-                order_request = MarketOrderRequest(
+            # Create order request based on type
+            if order_type == "market":
+                order_data = MarketOrderRequest(
                     symbol=symbol,
                     qty=quantity,
-                    side=order_side,
-                    time_in_force=tif
+                    side=OrderSide.BUY if side == "buy" else OrderSide.SELL,
+                    time_in_force=TimeInForce.DAY
                 )
-            elif order_type.lower() == "limit":
-                if not limit_price:
-                    return {"error": "Limit price required for limit orders"}
-                order_request = LimitOrderRequest(
+            elif order_type == "limit" and limit_price:
+                order_data = LimitOrderRequest(
                     symbol=symbol,
                     qty=quantity,
-                    side=order_side,
-                    time_in_force=tif,
+                    side=OrderSide.BUY if side == "buy" else OrderSide.SELL,
+                    time_in_force=TimeInForce.DAY,
                     limit_price=limit_price
                 )
-            elif order_type.lower() == "stop":
-                if not stop_price:
-                    return {"error": "Stop price required for stop orders"}
-                order_request = StopOrderRequest(
+            else:
+                return {"error": "Invalid order type or missing price"}
+            
+            # Submit order
+            order = self.trading_client.submit_order(order_data)
+            
+            # Record in database if user_id provided
+            if user_id and self.db_service:
+                transaction_id = self.db_service.record_transaction(
+                    user_id=user_id,
+                    portfolio_id=portfolio_id,
                     symbol=symbol,
-                    qty=quantity,
-                    side=order_side,
-                    time_in_force=tif,
-                    stop_price=stop_price
+                    quantity=quantity,
+                    side=side,
+                    order_type=order_type,
+                    status="pending",
+                    broker_reference=str(order.id)
                 )
             else:
-                return {"error": f"Unsupported order type: {order_type}"}
-            
-            # Submit order to Alpaca
-            order = self.trading_client.submit_order(order_request)
-            
-            # Record transaction in database
-            transaction_data = {
-                "portfolio_id": portfolio_id,
-                "user_id": user_id,
-                "symbol": symbol,
-                "transaction_type": side.upper(),
-                "quantity": quantity,
-                "price": limit_price or stop_price,
-                "order_type": order_type,
-                "status": "pending",
-                "broker_reference": str(order.id),
-                "notes": f"Alpaca order submitted: {order.id}",
-                "created_at": datetime.now()
-            }
-            
-            transaction_id = self.db_service.create_transaction(transaction_data)
+                transaction_id = None
             
             return {
                 "success": True,
                 "order_id": str(order.id),
                 "transaction_id": transaction_id,
-                "symbol": symbol,
-                "side": side,
-                "quantity": quantity,
-                "order_type": order_type,
+                "symbol": order.symbol,
+                "side": order.side,
+                "quantity": float(order.qty),
+                "order_type": order.type,
                 "status": order.status,
-                "submitted_at": order.submitted_at.isoformat() if order.submitted_at else None,
-                "estimated_cost": self._calculate_order_cost(quantity, limit_price or self._get_current_price(symbol))
+                "submitted_at": order.submitted_at.isoformat() if order.submitted_at else None
             }
             
         except Exception as e:
@@ -302,7 +185,18 @@ class AlpacaTradingService:
     def get_order_status(self, order_id: str) -> Dict:
         """Get order status from Alpaca and update database."""
         if self.mock_mode:
-            return {"error": "Cannot get order status in mock mode"}
+            return {
+                "order_id": order_id,
+                "status": "mock_pending",
+                "symbol": "MOCK",
+                "side": "buy",
+                "quantity": 0,
+                "filled_qty": 0,
+                "filled_avg_price": None,
+                "submitted_at": datetime.now().isoformat(),
+                "filled_at": None,
+                "note": "Mock mode - no real order status"
+            }
         
         try:
             order = self.trading_client.get_order_by_id(order_id)
@@ -338,29 +232,56 @@ class AlpacaTradingService:
     def get_positions(self) -> Dict:
         """Get all positions from Alpaca."""
         if self.mock_mode:
-            return {"positions": [], "total_value": 0}
-        
+            return {
+                "positions": [
+                    {
+                        "symbol": "AAPL",
+                        "qty": 10,
+                        "market_value": 1935.00,
+                        "avg_entry_price": 180.50,
+                        "current_price": 193.50,
+                        "unrealized_pl": 130.00
+                    },
+                    {
+                        "symbol": "MSFT",
+                        "qty": 5,
+                        "market_value": 2085.50,
+                        "avg_entry_price": 380.10,
+                        "current_price": 417.10,
+                        "unrealized_pl": 185.00
+                    }
+                ],
+                "total_market_value": 4020.50,
+                "total_unrealized_pl": 315.00
+            }
+            
         try:
             positions = self.trading_client.get_all_positions()
-            account = self.trading_client.get_account()
             
-            position_list = []
-            for position in positions:
-                position_list.append({
-                    "symbol": position.symbol,
-                    "quantity": float(position.qty),
-                    "market_value": float(position.market_value) if position.market_value else 0,
-                    "avg_cost": float(position.avg_cost) if position.avg_cost else 0,
-                    "unrealized_pl": float(position.unrealized_pl) if position.unrealized_pl else 0,
-                    "unrealized_plpc": float(position.unrealized_plpc) if position.unrealized_plpc else 0,
-                    "current_price": float(position.current_price) if position.current_price else 0
+            formatted_positions = []
+            total_market_value = 0
+            total_unrealized_pl = 0
+            
+            for pos in positions:
+                market_value = float(pos.market_value)
+                unrealized_pl = float(pos.unrealized_pl)
+                
+                formatted_positions.append({
+                    "symbol": pos.symbol,
+                    "qty": float(pos.qty),
+                    "market_value": market_value,
+                    "avg_entry_price": float(pos.avg_entry_price),
+                    "current_price": float(pos.current_price),
+                    "unrealized_pl": unrealized_pl
                 })
+                
+                total_market_value += market_value
+                total_unrealized_pl += unrealized_pl
             
             return {
-                "positions": position_list,
-                "total_value": float(account.portfolio_value),
-                "cash": float(account.cash),
-                "buying_power": float(account.buying_power)
+                "positions": formatted_positions,
+                "total_market_value": total_market_value,
+                "total_unrealized_pl": total_unrealized_pl
             }
             
         except Exception as e:
@@ -369,40 +290,76 @@ class AlpacaTradingService:
     
     def get_market_data(self, symbol: str, timeframe: str = "1Day", limit: int = 100) -> Dict:
         """Get market data for a symbol."""
-        if self.mock_mode or not self.data_client:
-            return {"error": "Market data not available in mock mode"}
+        if self.mock_mode:
+            mock_prices = {
+                "AAPL": 193.50,
+                "MSFT": 417.10,
+                "GOOGL": 175.20,
+                "AMZN": 151.94,
+                "TSLA": 248.42,
+                "SPY": 502.43,
+                "QQQ": 427.31,
+                "VTI": 215.64,
+                "BND": 72.46,
+                "JNJ": 155.12,
+                "PG": 152.96,
+                "KO": 58.35,
+                "NVDA": 875.28
+            }
+            
+            price = mock_prices.get(symbol, 100.0)
+            now = datetime.now()
+            
+            return {
+                "symbol": symbol,
+                "latest_price": price,
+                "last_updated": now.isoformat(),
+                "bars": [
+                    {
+                        "timestamp": (now - timedelta(days=i)).isoformat(),
+                        "open": price * (1 - 0.01 * i),
+                        "high": price * (1 + 0.005 * i),
+                        "low": price * (1 - 0.015 * i),
+                        "close": price * (1 - 0.005 * i),
+                        "volume": 1000000 - (i * 50000)
+                    }
+                    for i in range(5)  # Last 5 days of mock data
+                ]
+            }
         
         try:
             # Get latest quote
             quote_request = StockLatestQuoteRequest(symbol_or_symbols=symbol)
             quotes = self.data_client.get_stock_latest_quote(quote_request)
             
+            symbol_quote = quotes[symbol]
+            latest_price = (float(symbol_quote.ask_price) + float(symbol_quote.bid_price)) / 2
+            
             # Get historical bars
             bars_request = StockBarsRequest(
                 symbol_or_symbols=symbol,
-                timeframe=TimeFrame.Day,  # Default to daily
-                limit=limit
+                timeframe=TimeFrame.Day,
+                limit=5  # Last 5 days
             )
-            bars = self.data_client.get_stock_bars(bars_request)
             
-            latest_quote = quotes[symbol] if symbol in quotes else None
-            symbol_bars = bars[symbol] if symbol in bars else []
+            bars = self.data_client.get_stock_bars(bars_request)
+            symbol_bars = bars[symbol] if symbol in bars else None
             
             return {
                 "symbol": symbol,
-                "latest_price": float(latest_quote.ask_price) if latest_quote else None,
-                "bid_price": float(latest_quote.bid_price) if latest_quote else None,
-                "ask_price": float(latest_quote.ask_price) if latest_quote else None,
-                "timestamp": latest_quote.timestamp.isoformat() if latest_quote else None,
-                "bars_count": len(symbol_bars),
-                "latest_bar": {
-                    "open": float(symbol_bars[-1].open) if symbol_bars else None,
-                    "high": float(symbol_bars[-1].high) if symbol_bars else None,
-                    "low": float(symbol_bars[-1].low) if symbol_bars else None,
-                    "close": float(symbol_bars[-1].close) if symbol_bars else None,
-                    "volume": int(symbol_bars[-1].volume) if symbol_bars else None,
-                    "timestamp": symbol_bars[-1].timestamp.isoformat() if symbol_bars else None
-                } if symbol_bars else None
+                "latest_price": latest_price,
+                "last_updated": datetime.now().isoformat(),
+                "bars": [
+                    {
+                        "timestamp": bar.timestamp.isoformat(),
+                        "open": float(bar.open),
+                        "high": float(bar.high),
+                        "low": float(bar.low),
+                        "close": float(bar.close),
+                        "volume": bar.volume
+                    }
+                    for bar in symbol_bars
+                ] if symbol_bars else None
             }
             
         except Exception as e:
@@ -415,7 +372,10 @@ class AlpacaTradingService:
             # Mock prices for testing
             mock_prices = {
                 "AAPL": 193.50, "MSFT": 417.10, "GOOGL": 175.20,
-                "AMZN": 151.94, "TSLA": 248.42, "SPY": 502.43
+                "AMZN": 151.94, "TSLA": 248.42, "SPY": 502.43,
+                "QQQ": 427.31, "VTI": 215.64, "BND": 72.46,
+                "JNJ": 155.12, "PG": 152.96, "KO": 58.35,
+                "NVDA": 875.28
             }
             return mock_prices.get(symbol, 100.0)
         
@@ -428,8 +388,7 @@ class AlpacaTradingService:
     def _calculate_order_cost(self, quantity: float, price: float) -> float:
         """Calculate estimated order cost including commissions."""
         trade_value = quantity * price
-        # Alpaca typically has no commission for stocks, but add small fee for calculation
-        commission = max(0.01, trade_value * 0.001)  # 0.1% or $0.01 minimum
+        commission = max(trade_value * 0.001, 0.01)  # 0.1% or $0.01 minimum
         return trade_value + commission
     
     def _mock_place_order(self, symbol: str, side: str, quantity: float, order_type: str, limit_price: Optional[float] = None) -> Dict:

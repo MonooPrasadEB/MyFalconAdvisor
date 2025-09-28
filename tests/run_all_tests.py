@@ -57,7 +57,8 @@ def run_test_suite(test_file, suite_name):
         for line in output_lines:
             # Format 1: "3/6 tests passed (50.0%)"
             # Format 2: "📊 Overall Score: 4/4 (100.0%)"
-            if ("tests passed" in line or "Overall Score:" in line) and "%" in line:
+            # Format 3: "📊 Multi-Client Score: 5/5 (100.0%)"
+            if ("tests passed" in line or "Overall Score:" in line or "Multi-Client Score:" in line) and "%" in line:
                 try:
                     # Extract numbers from lines with X/Y format
                     parts = line.split()

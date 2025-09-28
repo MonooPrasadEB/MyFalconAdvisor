@@ -28,6 +28,18 @@ def load_env():
                     except ValueError:
                         continue
 
+def force_mock_mode():
+    """Force mock mode for all tests by setting environment variable."""
+    os.environ["MYFALCON_TEST_MODE"] = "mock"
+    
+    # Import and configure AlpacaTradingService
+    try:
+        from myfalconadvisor.tools.alpaca_trading_service import alpaca_trading_service
+        alpaca_trading_service.mock_mode = True
+        print("✅ Mock mode enforced for AlpacaTradingService")
+    except Exception as e:
+        print(f"⚠️  Could not configure mock mode: {e}")
+
 def run_test_suite(test_file, suite_name):
     """Run a single test suite and return results."""
     print(f"\n{'='*80}")
@@ -35,13 +47,18 @@ def run_test_suite(test_file, suite_name):
     print(f"{'='*80}")
     
     try:
+        # Set mock mode in environment for subprocess
+        env = os.environ.copy()
+        env["MYFALCON_TEST_MODE"] = "mock"
+        
         # Run the test file
         result = subprocess.run(
             [sys.executable, test_file],
             cwd=Path(__file__).parent.parent,
             capture_output=True,
             text=True,
-            timeout=300  # 5 minute timeout per test suite
+            timeout=300,  # 5 minute timeout per test suite
+            env=env  # Pass modified environment
         )
         
         # Print the output
@@ -193,7 +210,11 @@ def main():
     print("=" * 80)
     print(f"🕐 Started at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print("🛡️  PRODUCTION DATABASE PROTECTION: Tests use READ-ONLY operations")
+    print("⚠️  MOCK MODE ENABLED: No real API calls or orders will be made")
     print("=" * 80)
+    
+    # Force mock mode
+    force_mock_mode()
     
     # Check prerequisites
     prereq_score = check_system_prerequisites()

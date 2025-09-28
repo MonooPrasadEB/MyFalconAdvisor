@@ -1,8 +1,6 @@
-#!/usr/bin/env python3
 """
-Alpaca Trading Integration Tests
-
-Tests Alpaca API connectivity, market data retrieval, and order placement functionality.
+Test Alpaca integration using mock mode only.
+NO REAL ORDERS SHOULD BE PLACED BY TESTS.
 """
 
 import os
@@ -27,175 +25,108 @@ def load_env():
                     except ValueError:
                         continue
 
-def test_alpaca_connection():
-    """Test basic Alpaca API connection."""
-    print("🔑 Testing Alpaca API Connection")
-    print("=" * 50)
-    
-    # Check if API keys are set
-    api_key = os.getenv("ALPACA_API_KEY")
-    secret_key = os.getenv("ALPACA_SECRET_KEY")
-    
-    if not api_key or not secret_key:
-        print("❌ Alpaca API keys not found in environment variables")
-        return False
-    
-    try:
-        from alpaca.trading.client import TradingClient
-        
-        # Initialize client
-        trading_client = TradingClient(
-            api_key=api_key,
-            secret_key=secret_key,
-            paper=True  # Always use paper trading for testing
-        )
-        
-        # Test connection by getting account info
-        account = trading_client.get_account()
-        
-        print("✅ Successfully connected to Alpaca!")
-        print(f"📊 Account ID: {account.id}")
-        print(f"💰 Buying Power: ${float(account.buying_power):,.2f}")
-        print(f"💼 Portfolio Value: ${float(account.portfolio_value):,.2f}")
-        print(f"💵 Cash: ${float(account.cash):,.2f}")
-        print(f"📈 Day Trade Count: {account.daytrade_count}")
-        
-        return True
-        
-    except Exception as e:
-        print(f"❌ Connection failed: {e}")
-        return False
-
 def test_alpaca_market_data():
-    """Test market data retrieval."""
-    print("\n📈 Testing Alpaca Market Data")
-    print("=" * 50)
-    
-    try:
-        from alpaca.data.historical import StockHistoricalDataClient
-        from alpaca.data.requests import StockLatestQuoteRequest
-        
-        api_key = os.getenv("ALPACA_API_KEY")
-        secret_key = os.getenv("ALPACA_SECRET_KEY")
-        
-        if not api_key or not secret_key:
-            print("❌ API keys not available")
-            return False
-        
-        data_client = StockHistoricalDataClient(api_key=api_key, secret_key=secret_key)
-        
-        # Test symbols
-        symbols = ["AAPL", "MSFT", "SPY"]
-        successful_quotes = 0
-        
-        for symbol in symbols:
-            try:
-                request = StockLatestQuoteRequest(symbol_or_symbols=symbol)
-                quotes = data_client.get_stock_latest_quote(request)
-                
-                if symbol in quotes:
-                    quote = quotes[symbol]
-                    print(f"✅ {symbol}: Bid ${float(quote.bid_price):.2f} | Ask ${float(quote.ask_price):.2f}")
-                    successful_quotes += 1
-                else:
-                    print(f"⚠️  {symbol}: No quote data available")
-                    
-            except Exception as e:
-                print(f"❌ {symbol}: Error - {e}")
-        
-        return successful_quotes > 0
-        
-    except Exception as e:
-        print(f"❌ Market data test failed: {e}")
-        return False
-
-def test_alpaca_order_placement():
-    """Test order placement functionality."""
-    print("\n📝 Testing Alpaca Order Placement")
-    print("=" * 50)
-    
-    try:
-        from alpaca.trading.client import TradingClient
-        from alpaca.trading.requests import MarketOrderRequest
-        from alpaca.trading.enums import OrderSide, TimeInForce
-        
-        api_key = os.getenv("ALPACA_API_KEY")
-        secret_key = os.getenv("ALPACA_SECRET_KEY")
-        
-        if not api_key or not secret_key:
-            print("❌ API keys not available")
-            return False
-        
-        trading_client = TradingClient(
-            api_key=api_key,
-            secret_key=secret_key,
-            paper=True
-        )
-        
-        # Create a small test order
-        order_request = MarketOrderRequest(
-            symbol="SPY",
-            qty=1,
-            side=OrderSide.BUY,
-            time_in_force=TimeInForce.DAY
-        )
-        
-        print("🔄 Placing test order for 1 share of SPY...")
-        order = trading_client.submit_order(order_request)
-        
-        print(f"✅ Order placed successfully!")
-        print(f"📋 Order ID: {order.id}")
-        print(f"📊 Symbol: {order.symbol}")
-        print(f"📈 Side: {order.side}")
-        print(f"📦 Quantity: {order.qty}")
-        print(f"⏰ Status: {order.status}")
-        print(f"🕐 Submitted: {order.submitted_at}")
-        
-        return True
-        
-    except Exception as e:
-        print(f"❌ Order placement failed: {e}")
-        return False
-
-def test_alpaca_service_integration():
-    """Test our custom Alpaca service integration."""
-    print("\n🛠️  Testing Alpaca Service Integration")
+    """Test market data functionality."""
+    print("\n📊 Testing Market Data")
     print("=" * 50)
     
     try:
         from myfalconadvisor.tools.alpaca_trading_service import alpaca_trading_service
         
-        # Test service initialization
-        if alpaca_trading_service:
-            print("✅ Alpaca service initialized successfully")
+        # Force mock mode for tests
+        alpaca_trading_service.mock_mode = True
+        
+        # Test getting market data
+        spy_data = alpaca_trading_service.get_market_data("SPY")
+        
+        # In mock mode, we expect the error "Market data not available in mock mode"
+        if spy_data.get("error") == "Market data not available in mock mode":
+            print("✅ Mock mode correctly prevents market data access")
+            return True
         else:
-            print("❌ Alpaca service failed to initialize")
+            print(f"⚠️  Unexpected response in mock mode: {spy_data}")
             return False
+            
+    except Exception as e:
+        print(f"❌ Market data test failed: {e}")
+        print(f"🔍 Error details: {traceback.format_exc()}")
+        return False
+
+def test_alpaca_order_placement():
+    """Test order placement functionality using mock mode."""
+    print("\n📝 Testing Alpaca Order Placement (MOCK MODE)")
+    print("=" * 50)
+    
+    try:
+        from myfalconadvisor.tools.alpaca_trading_service import alpaca_trading_service
+        
+        # Force mock mode for tests
+        alpaca_trading_service.mock_mode = True
+        
+        # Place a test order using our service (will be mocked)
+        order_result = alpaca_trading_service.place_order(
+            symbol="SPY",
+            side="buy",
+            quantity=1,
+            order_type="market"
+        )
+        
+        if order_result.get("success"):
+            print("✅ Mock order placed successfully")
+            print(f"📋 Order ID: {order_result.get('order_id')}")
+            print(f"📊 Symbol: {order_result.get('symbol')}")
+            print(f"📈 Side: {order_result.get('side')}")
+            print(f"📦 Quantity: {order_result.get('quantity')}")
+            print(f"⏰ Status: {order_result.get('status')}")
+            print(f"💡 Note: {order_result.get('note')}")
+            
+            # Verify mock order properties
+            if (order_result.get("status") == "mock_pending" and
+                "mock" in order_result.get("note", "").lower()):
+                return True
+            else:
+                print("⚠️  Order response missing mock indicators")
+                return False
+        else:
+            print(f"⚠️  Order placement had issues: {order_result.get('error')}")
+            return False
+            
+    except Exception as e:
+        print(f"❌ Order placement test failed: {e}")
+        return False
+
+def test_alpaca_service_integration():
+    """Test our custom Alpaca service integration."""
+    print("\n🔄 Testing Service Integration")
+    print("=" * 50)
+    
+    try:
+        from myfalconadvisor.tools.alpaca_trading_service import alpaca_trading_service
+        
+        # Force mock mode for tests
+        alpaca_trading_service.mock_mode = True
         
         # Test connection
-        connection_test = alpaca_trading_service.test_connection()
-        if connection_test.get('success', False):
-            print("✅ Service connection test passed")
-            account_info = connection_test.get('account_info', {})
-            print(f"📊 Account Value: ${account_info.get('portfolio_value', 'N/A')}")
+        connection = alpaca_trading_service.test_connection()
+        if connection.get("mode") == "mock":
+            print("✅ Service correctly reports mock mode")
         else:
-            print(f"❌ Service connection test failed: {connection_test.get('error', 'Unknown error')}")
+            print(f"⚠️  Unexpected mode: {connection.get('mode')}")
             return False
-        
-        # Test market data
-        try:
-            price_data = alpaca_trading_service.get_current_price("AAPL")
-            if price_data and price_data > 0:
-                print(f"✅ Market data retrieval successful: AAPL @ ${price_data:.2f}")
-            else:
-                print("⚠️  Market data retrieval returned no data")
-        except Exception as e:
-            print(f"⚠️  Market data test failed: {e}")
-        
-        return True
-        
+            
+        # Test getting positions (should return mock data)
+        positions = alpaca_trading_service.get_positions()
+        if isinstance(positions, dict) and "positions" in positions:
+            print("✅ Position retrieval returns mock data")
+            print(f"📊 Mock positions: {len(positions['positions'])} positions")
+            print(f"💰 Mock total value: ${positions.get('total_market_value', 0):,.2f}")
+            return True
+        else:
+            print(f"⚠️  Position retrieval issues: {positions.get('error')}")
+            return False
+            
     except Exception as e:
-        print(f"❌ Alpaca service integration test failed: {e}")
+        print(f"❌ Service integration test failed: {e}")
         return False
 
 def main():
@@ -203,6 +134,8 @@ def main():
     print("🧪 MyFalconAdvisor Alpaca Integration Test Suite")
     print("=" * 70)
     print(f"🕐 Started at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    print("⚠️  RUNNING IN MOCK MODE - NO REAL ORDERS WILL BE PLACED")
+    print("=" * 70)
     
     # Load environment
     load_env()
@@ -215,7 +148,6 @@ def main():
     print(f"📝 Paper Trading: {os.getenv('ALPACA_PAPER_TRADING', 'true')}")
     
     tests = [
-        ("Alpaca Connection", test_alpaca_connection),
         ("Market Data", test_alpaca_market_data),
         ("Order Placement", test_alpaca_order_placement),
         ("Service Integration", test_alpaca_service_integration)
@@ -246,21 +178,16 @@ def main():
     print(f"\n🎯 Alpaca Score: {passed}/{total} tests passed ({passed/total*100:.1f}%)")
     
     if passed == total:
-        print("🎉 Alpaca integration is fully operational!")
+        print("🎉 Mock integration tests passed!")
     elif passed >= total * 0.7:
-        print("👍 Alpaca integration is mostly working. Check failed tests above.")
+        print("👍 Most mock tests passed. Check failures above.")
     else:
-        print("⚠️  Alpaca integration needs attention. Check API keys and connectivity.")
+        print("⚠️  Multiple mock tests failed. Check implementation.")
     
     print(f"\n🕐 Completed at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     
-    # Recommendations
-    if passed < total:
-        print(f"\n💡 Troubleshooting:")
-        print("1. Verify ALPACA_API_KEY and ALPACA_SECRET_KEY in .env file")
-        print("2. Ensure you're using paper trading keys (not live trading)")
-        print("3. Check that your Alpaca account is active and funded")
-        print("4. Verify network connectivity to Alpaca servers")
+    # Exit with appropriate code
+    sys.exit(0 if passed == total else 1)
 
 if __name__ == "__main__":
     main()

@@ -42,11 +42,13 @@ def test_multi_task_agent():
         # Test portfolio analysis with proper parameters
         print("🔄 Testing portfolio analysis...")
         
+        # Mock portfolio data for testing (not real user data)
         sample_portfolio = {
             "AAPL": {"quantity": 10, "current_price": 250.0},
             "MSFT": {"quantity": 5, "current_price": 500.0}
         }
         
+        # Mock client profile for testing (not real user data)
         client_profile = {
             "age": 35,
             "risk_tolerance": "moderate",

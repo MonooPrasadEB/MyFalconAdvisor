@@ -898,7 +898,7 @@ class ExecutionService:
             # Create client profile (simplified for demo)
             client_profile = {
                 "user_id": user_id,
-                "risk_tolerance": "moderate",  # Would come from user profile in real system
+                "risk_tolerance": self._get_user_risk_tolerance(user_id),
                 "investment_objectives": ["growth", "income"],
                 "time_horizon": "long_term"
             }
@@ -1409,7 +1409,23 @@ class ExecutionService:
                 "reason": str(e),
                 "session_id": session_id
             }
+    
+    def _get_user_risk_tolerance(self, user_id: str) -> str:
+        """Get user's risk tolerance from database."""
+        try:
+            with self.db_service.get_session() as session:
+                result = session.execute(
+                    text("SELECT risk_profile FROM users WHERE user_id = :user_id"),
+                    {"user_id": user_id}
+                )
+                row = result.fetchone()
+                return row[0] if row and row[0] else "moderate"
+        except Exception as e:
+            logger.warning(f"Could not load user risk tolerance: {str(e)}")
+            return "moderate"  # fallback
 
 
 # Create service instance (renamed from agent to service)
 execution_service = ExecutionService()
+
+

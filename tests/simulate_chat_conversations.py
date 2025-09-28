@@ -37,7 +37,7 @@ def simulate_client_conversation(client_name, client_type, questions):
     try:
         from myfalconadvisor.core.supervisor import investment_advisor_supervisor
         
-        # Create client profile based on type
+        # Mock client profiles for testing (not real user data)
         client_profiles = {
             "conservative": {
                 "age": 55,

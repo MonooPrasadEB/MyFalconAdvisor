@@ -27,7 +27,7 @@ def load_env():
                         continue
 
 def test_basic_chat():
-    """Test basic chat functionality."""
+    """Test basic chat functionality using test data."""
     print("💬 Testing Basic Chat Functionality")
     print("=" * 50)
     
@@ -43,7 +43,8 @@ def test_basic_chat():
             "Is now a good time to buy bonds?"
         ]
         
-        # Sample client profile
+        # TEST DATA - Mock client profile for testing chat functionality
+        # This is not real user data, just for testing the chat system
         client_profile = {
             "age": 35,
             "risk_tolerance": "moderate",
@@ -93,14 +94,15 @@ def test_basic_chat():
         return False
 
 def test_portfolio_chat():
-    """Test chat with portfolio context."""
+    """Test chat with portfolio context using test data."""
     print("\n💼 Testing Portfolio-Specific Chat")
     print("=" * 50)
     
     try:
         from myfalconadvisor.core.supervisor import investment_advisor_supervisor
         
-        # Sample portfolio
+        # TEST DATA - Mock portfolio for testing chat functionality
+        # This is not real user data, just for testing the chat system
         portfolio_data = {
             "AAPL": {"quantity": 10, "current_price": 250.0, "market_value": 2500.0},
             "MSFT": {"quantity": 5, "current_price": 500.0, "market_value": 2500.0},
@@ -108,6 +110,8 @@ def test_portfolio_chat():
             "total_value": 18200.0
         }
         
+        # TEST DATA - Mock client profile for testing chat functionality
+        # This is not real user data, just for testing the chat system
         client_profile = {
             "age": 40,
             "risk_tolerance": "moderate",

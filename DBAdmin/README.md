@@ -6,7 +6,7 @@ This directory contains all database setup, configuration, and administration fi
 
 ### Configuration Files
 - **`database_config.py`** - Database configuration and connection management
-- **`database_schema.sql`** - Complete database schema with all tables and relationships
+- **`all_ddls.sql`** - Complete database schema with all tables and relationships
 
 ### Setup Scripts
 - **`setup_database.sh`** - Shell script to initialize the database
@@ -33,7 +33,7 @@ python DBAdmin/update_aiven_config.py
 ./DBAdmin/setup_database.sh
 
 # Or manually with psql
-psql -h your-host -p your-port -U your-user -d your-db -f DBAdmin/database_schema.sql
+psql -h your-host -p your-port -U your-user -d your-db -f DBAdmin/all_ddls.sql
 ```
 
 ### 3. Test Connection

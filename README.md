@@ -41,6 +41,8 @@ This system implements a **3-agent architecture** powered by LangGraph orchestra
 
 ## ⚡ Quick Start
 
+> **🌐 Note**: The CLI is a development tool for testing the AI agents. The **primary interface will be a web application** providing a seamless user experience with authentication, portfolio management, and conversational AI guidance.
+
 ### 1. Installation
 
 ```bash
@@ -57,67 +59,122 @@ pip install -e ".[dev,jupyter,advanced-finance]"
 
 ### 2. Configuration
 
-Create a `.env` file with your API keys:
+Create a `.env` file with your API keys and database credentials:
 
 ```bash
-# Required
+# Required - AI and Market Data
 OPENAI_API_KEY=your_openai_api_key_here
-
-# Optional for enhanced data
 ALPHA_VANTAGE_API_KEY=your_alpha_vantage_key
 FRED_API_KEY=your_fred_key
+
+# Required - Database Connection
+DB_USER=your_database_user
+DB_PASSWORD=your_database_password
+
+# Optional - Trading Integration (Paper Trading)
+ALPACA_API_KEY=your_alpaca_paper_key
+ALPACA_SECRET_KEY=your_alpaca_paper_secret
 ```
 
-### 3. Run Examples
+### 3. Database-Driven CLI (Development Tool)
+
+The CLI automatically loads user data from the database - no file uploads needed:
 
 ```bash
-# Quick demo
-myfalcon demo "Analyze my portfolio with 70% tech stocks"
+# Quick demo with your real portfolio data
+myfalcon demo "How is my portfolio performing?"
 
-# Interactive mode
+# Interactive AI conversation mode
 myfalcon interactive
 
-# Portfolio analysis
-myfalcon portfolio --assets sample_portfolio.json
+# Analyze your portfolio from database
+myfalcon portfolio
 
-# Risk assessment
-myfalcon risk --client-profile sample_client.json
+# Risk assessment using your profile
+myfalcon risk
 
-# Validate configuration
+# Get rebalancing recommendations
+myfalcon rebalance
+
+# Simulate trades
+myfalcon simulate --symbol AAPL --action buy --quantity 10
+
+# View your transaction history
+myfalcon transactions --limit 20
+
+# Validate system configuration
 myfalcon validate
 ```
 
+### 🌐 Web Application (Primary Interface)
+
+The web application will provide:
+- **User Authentication**: Secure login and profile management
+- **Portfolio Dashboard**: Real-time portfolio visualization
+- **Conversational AI**: Natural language financial guidance
+- **Trade Execution**: Seamless order placement and tracking
+- **Compliance Integration**: Automated regulatory validation
+- **Mobile Responsive**: Access from any device
+
 ## 📊 Usage Examples
 
-### Portfolio Analysis
+### Database-Driven Portfolio Analysis
 ```python
-from myfalconadvisor import investment_advisor_supervisor
+from myfalconadvisor.core.supervisor import investment_advisor_supervisor
+from myfalconadvisor.tools.database_service import DatabaseService
 
-# Sample portfolio data
-portfolio_data = {
-    "total_value": 100000,
-    "assets": [
-        {"symbol": "AAPL", "quantity": 100, "allocation": 40},
-        {"symbol": "SPY", "quantity": 200, "allocation": 60}
-    ]
-}
+# Initialize database service
+db_service = DatabaseService()
 
-# Client profile
-client_profile = {
-    "age": 35,
-    "risk_tolerance": "moderate", 
-    "time_horizon": 20,
-    "annual_income": 85000
-}
+# Load real user data from database
+user_id = "usr_348784c4-6f83-4857-b7dc-f5132a38dfee"  # Authenticated user
+portfolios = db_service.get_user_portfolios(user_id)
+portfolio_data = portfolios[0] if portfolios else None
 
-# Get comprehensive analysis
+# Load user profile from database
+with db_service.get_session() as session:
+    result = session.execute(text("""
+        SELECT age, risk_profile, annual_income_usd, objective
+        FROM users WHERE user_id = :user_id
+    """), {"user_id": user_id})
+    user_row = result.fetchone()
+    
+    client_profile = {
+        "age": calculate_age_from_dob(user_row.dob),
+        "risk_tolerance": user_row.risk_profile,
+        "annual_income": float(user_row.annual_income_usd),
+        "primary_goal": user_row.objective
+    }
+
+# Get AI-powered analysis using real data
 result = investment_advisor_supervisor.process_client_request(
     request="Analyze my portfolio and suggest improvements",
     client_profile=client_profile,
-    portfolio_data=portfolio_data
+    portfolio_data=portfolio_data,
+    user_id=user_id
 )
 
 print(result["response"])
+```
+
+### Web Application Integration
+```javascript
+// Frontend API call to get portfolio analysis
+const response = await fetch('/api/portfolio/analyze', {
+    method: 'POST',
+    headers: {
+        'Authorization': `Bearer ${userToken}`,
+        'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+        query: "How is my portfolio performing this month?",
+        include_recommendations: true
+    })
+});
+
+const analysis = await response.json();
+// Display AI response in chat interface
+displayAIResponse(analysis.response);
 ```
 
 ## 🏗 System Architecture
@@ -205,22 +262,28 @@ print(result["response"])
 myfalconadvisor/
 ├── agents/                     # Multi-Agent System Components
 │   ├── multi_task_agent.py    # Advisor Agent: Portfolio analysis & conversational AI
-│   ├── execution_agent.py     # Execution Agent: Trade execution & paper trail
+│   ├── execution_agent.py     # Execution Service: Database-driven trade validation
 │   └── compliance_reviewer.py # Compliance Agent: Regulatory validation
 ├── tools/                      # Financial Analysis & Data Tools
+│   ├── database_service.py    # PostgreSQL database integration
 │   ├── market_data.py         # Real-time market data (Yahoo Finance, Alpha Vantage)
 │   ├── portfolio_analyzer.py  # Portfolio optimization & analytics
 │   ├── risk_assessment.py     # Risk profiling & scenario simulation
 │   ├── compliance_checker.py  # SEC/FINRA/IRS compliance validation
+│   ├── chat_logger.py         # AI conversation logging
 │   └── trade_simulator.py     # Trade simulation & backtesting
 ├── core/                       # System Architecture
 │   ├── config.py              # Configuration & API key management
 │   └── supervisor.py          # LangGraph multi-agent orchestration
-├── examples/                   # Sample data & test scripts
-│   ├── sample_client_*.json   # Client profile examples
-│   ├── sample_portfolio.json  # Portfolio data examples
-│   └── test_system.py         # System validation script
-├── cli.py                      # Command-line interface
+├── DBAdmin/                    # Database Administration
+│   ├── database_config.py     # Database connection configuration
+│   ├── all_ddls.sql          # Complete database schema
+│   └── setup_database.sh     # Database initialization script
+├── tests/                      # Comprehensive Test Suite
+│   ├── run_all_tests.py      # Complete system testing
+│   ├── test_ai_agents.py     # AI agent functionality tests
+│   └── test_complete_logging_workflow.py  # Database logging tests
+├── cli.py                      # Database-driven CLI (development tool)
 └── pyproject.toml             # Package configuration & dependencies
 ```
 
@@ -449,34 +512,43 @@ isort myfalconadvisor/
 mypy myfalconadvisor/
 ```
 
-### Example Data Files
+### Database Setup
 
-Create sample JSON files for testing:
+The system uses PostgreSQL for data persistence. Set up your database:
 
-**sample_portfolio.json**:
-```json
-{
-  "total_value": 250000,
-  "assets": [
-    {"symbol": "AAPL", "quantity": 100, "allocation": 20, "sector": "Technology"},
-    {"symbol": "MSFT", "quantity": 50, "allocation": 15, "sector": "Technology"},
-    {"symbol": "SPY", "quantity": 300, "allocation": 45, "sector": "Diversified"},
-    {"symbol": "BND", "quantity": 200, "allocation": 20, "sector": "Fixed Income"}
-  ]
-}
+```bash
+# Initialize database schema
+cd DBAdmin/
+./setup_database.sh
+
+# Or manually run the schema
+psql -h your_host -U your_user -d myfalconadvisor_db -f all_ddls.sql
 ```
 
-**sample_client.json**:
-```json
-{
-  "age": 35,
-  "annual_income": 85000,
-  "net_worth": 250000,
-  "investment_experience": "intermediate",
-  "risk_tolerance": "moderate",
-  "time_horizon": 25,
-  "primary_goal": "wealth_building"
-}
+**Database Schema Includes**:
+- **users**: User profiles with risk tolerance and financial data
+- **portfolios**: User portfolio information and cash balances
+- **portfolio_assets**: Individual holdings and allocations
+- **transactions**: Complete transaction history
+- **ai_sessions**: AI conversation sessions
+- **ai_messages**: Individual AI interactions
+- **recommendations**: AI-generated investment recommendations
+- **compliance_checks**: Regulatory validation results
+- **agent_workflows**: Multi-agent process tracking
+
+### Testing the System
+
+```bash
+# Run comprehensive test suite
+python tests/run_all_tests.py
+
+# Test specific components
+python tests/test_ai_agents.py
+python tests/test_complete_logging_workflow.py
+
+# Test CLI functionality
+myfalcon demo "How is my portfolio performing?"
+myfalcon interactive
 ```
 
 ## 📈 Real Financial Data

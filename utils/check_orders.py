@@ -4,16 +4,19 @@ from pathlib import Path
 
 def load_env():
     """Load environment variables from .env file."""
-    env_file = Path(__file__).parent / ".env"
+    env_file = Path(__file__).parent.parent / ".env"
     if env_file.exists():
+        print(f"Loading environment from {env_file}")
         with open(env_file) as f:
             for line in f:
                 if line.strip() and not line.startswith("#"):
                     try:
                         key, value = line.strip().split("=", 1)
-                        os.environ[key] = value
+                        os.environ[key] = value.strip('"').strip("'")
                     except ValueError:
                         continue
+    else:
+        print(f"Error: .env file not found at {env_file}")
 
 def check_orders():
     load_env()
@@ -22,7 +25,8 @@ def check_orders():
     secret_key = os.getenv("ALPACA_SECRET_KEY")
     
     if not api_key or not secret_key:
-        print("API keys not found")
+        print("API keys not found in .env file")
+        print("Please ensure ALPACA_API_KEY and ALPACA_SECRET_KEY are set")
         return
         
     client = TradingClient(api_key, secret_key, paper=True)

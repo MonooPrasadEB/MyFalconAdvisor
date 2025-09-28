@@ -1,45 +1,62 @@
+"""Check pending Alpaca orders."""
+
+import os
+import sys
+from pathlib import Path
+
+# Add the parent directory to path
+sys.path.append(str(Path(__file__).parent.parent))
+
 from myfalconadvisor.tools.alpaca_trading_service import alpaca_trading_service
 from alpaca.trading.requests import GetOrdersRequest
 
+def load_env():
+    """Load environment variables from .env file."""
+    env_file = Path(__file__).parent.parent / ".env"
+    if env_file.exists():
+        print(f"Loading environment from {env_file}")
+        with open(env_file) as f:
+            for line in f:
+                if line.strip() and not line.startswith("#"):
+                    try:
+                        key, value = line.strip().split("=", 1)
+                        os.environ[key] = value.strip('"').strip("'")
+                    except ValueError:
+                        continue
+    else:
+        print(f"Error: .env file not found at {env_file}")
+
 def check_pending_orders():
+    """Check and display all pending Alpaca orders."""
+    load_env()
+    
+    print("\n=== PENDING ALPACA ORDERS ===")
+    
     try:
-        orders = alpaca_trading_service.trading_client.get_orders(GetOrdersRequest(status='open'))
+        orders = alpaca_trading_service.trading_client.get_orders(
+            GetOrdersRequest(status='open')
+        )
         
-        print('\n=== PENDING ALPACA ORDERS ===')
         if not orders:
-            print('No pending orders found')
+            print("\nNo pending orders found.")
             return
             
-        print(f'Found {len(orders)} pending orders:')
-        total_value = 0
-        
+        print(f"\nFound {len(orders)} pending orders:")
         for order in orders:
-            print(f'\nSymbol: {order.symbol}')
-            print(f'Side: {order.side}')
-            print(f'Quantity: {order.qty}')
-            print(f'Type: {order.type}')
-            print(f'Status: {order.status}')
-            print(f'Submitted: {order.submitted_at}')
+            print(f"\nSymbol: {order.symbol}")
+            print(f"Order Type: {order.type}")
+            print(f"Side: {order.side}")
+            print(f"Quantity: {order.qty}")
+            print(f"Status: {order.status}")
+            print(f"Created At: {order.created_at}")
+            if order.limit_price:
+                print(f"Limit Price: ${order.limit_price}")
+            if order.notional:
+                print(f"Notional Value: ${order.notional}")
+            print(f"Order ID: {order.id}")
             
-            # For market orders, get current price
-            if order.type == 'market':
-                try:
-                    quote = alpaca_trading_service.data_client.get_stock_latest_quote(order.symbol)
-                    est_price = (quote.ask_price + quote.bid_price) / 2
-                    print(f'Estimated Market Price: ${est_price:.2f}')
-                    total_value += float(order.qty) * est_price
-                except:
-                    print('Could not estimate market price')
-            # For limit orders
-            elif hasattr(order, 'limit_price') and order.limit_price:
-                print(f'Limit Price: ${order.limit_price}')
-                total_value += float(order.qty) * float(order.limit_price)
-                
-        if total_value > 0:
-            print(f'\nTotal Estimated Value: ${total_value:,.2f}')
-        
     except Exception as e:
-        print(f'Error checking orders: {e}')
+        print(f"Error checking orders: {e}")
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     check_pending_orders()

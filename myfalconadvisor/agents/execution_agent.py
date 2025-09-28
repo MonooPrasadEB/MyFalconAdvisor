@@ -600,10 +600,7 @@ class ExecutionService:
     def _simulate_trade_execution(self, order: TradeOrder) -> ExecutionResult:
         """Execute trade through Alpaca API and write to proper database tables."""
         try:
-            # Step 1: Write to ORDERS table
-            order_record_id = self._write_to_orders_table(order)
-            
-            # Step 2: Try to execute through Alpaca API first
+            # Try to execute through Alpaca API first
             if not self.alpaca_service.mock_mode:
                 logger.info(f"Executing order {order.order_id} through Alpaca API")
                 
@@ -628,10 +625,7 @@ class ExecutionService:
                     executed_quantity = status_result.get("filled_qty", order.quantity)
                     commission = alpaca_result.get("estimated_cost", 0) - (executed_price * executed_quantity)
                     
-                    # Step 3: Write to EXECUTIONS table
-                    self._write_to_executions_table(order_record_id, executed_quantity, executed_price)
-                    
-                    # Step 4: Update POSITIONS table
+                    # Update POSITIONS table
                     self._update_positions_table(order.client_id, order.symbol, order.action, executed_quantity, executed_price)
                     
                     return ExecutionResult(
@@ -663,10 +657,7 @@ class ExecutionService:
             
             commission = max(0.65, order.quantity * executed_price * 0.005)
             
-            # Step 3: Write to EXECUTIONS table (simulated)
-            self._write_to_executions_table(order_record_id, executed_quantity, executed_price)
-            
-            # Step 4: Update POSITIONS table (simulated)
+            # Update POSITIONS table (simulated)
             self._update_positions_table(order.client_id, order.symbol, order.action, executed_quantity, executed_price)
             
             return ExecutionResult(
@@ -725,74 +716,6 @@ class ExecutionService:
             "Cancel and resubmit with different parameters"
         ]
 
-    def _write_to_orders_table(self, order: TradeOrder) -> str:
-        """Write order to the orders table."""
-        try:
-            from sqlalchemy import create_engine, text
-            import uuid
-            
-            # Get database connection
-            engine = self.db_service.engine if hasattr(self.db_service, 'engine') else self._get_db_engine()
-            
-            order_record_id = str(uuid.uuid4())
-            
-            with engine.connect() as conn:
-                # Get account_id for the user (assuming we have accounts table)
-                account_result = conn.execute(text("SELECT account_id FROM accounts WHERE user_id = :user_id LIMIT 1"), 
-                                            {"user_id": order.client_id})
-                account_row = account_result.fetchone()
-                account_id = account_row[0] if account_row else order.client_id
-                
-                # Insert into orders table
-                conn.execute(text("""
-                    INSERT INTO orders (order_id, account_id, ticker, sector, quantity, order_type, limit_price, timestamp, time_in_force)
-                    VALUES (:order_id, :account_id, :ticker, :sector, :quantity, :order_type, :limit_price, :timestamp, :time_in_force)
-                """), {
-                    "order_id": order_record_id,
-                    "account_id": account_id,
-                    "ticker": order.symbol,
-                    "sector": "Technology",  # Could be enhanced to lookup actual sector
-                    "quantity": order.quantity,
-                    "order_type": order.order_type.value,
-                    "limit_price": order.price,
-                    "timestamp": order.created_at,
-                    "time_in_force": "DAY"
-                })
-                
-                conn.commit()
-                logger.info(f"Order {order_record_id} written to orders table")
-                return order_record_id
-                
-        except Exception as e:
-            logger.error(f"Failed to write to orders table: {e}")
-            return str(uuid.uuid4())  # Return dummy ID to continue execution
-    
-    def _write_to_executions_table(self, order_id: str, filled_quantity: float, fill_price: float):
-        """Write execution to the executions table."""
-        try:
-            from sqlalchemy import create_engine, text
-            import uuid
-            
-            engine = self.db_service.engine if hasattr(self.db_service, 'engine') else self._get_db_engine()
-            
-            with engine.connect() as conn:
-                conn.execute(text("""
-                    INSERT INTO executions (exec_id, order_id, filled_quantity, fill_price, exec_timestamp)
-                    VALUES (:exec_id, :order_id, :filled_quantity, :fill_price, :exec_timestamp)
-                """), {
-                    "exec_id": str(uuid.uuid4()),
-                    "order_id": order_id,
-                    "filled_quantity": filled_quantity,
-                    "fill_price": fill_price,
-                    "exec_timestamp": datetime.now()
-                })
-                
-                conn.commit()
-                logger.info(f"Execution recorded for order {order_id}")
-                
-        except Exception as e:
-            logger.error(f"Failed to write to executions table: {e}")
-    
     def _update_positions_table(self, account_id: str, symbol: str, action: str, quantity: float, price: float):
         """Update positions table with new position or modify existing."""
         try:
@@ -981,15 +904,9 @@ class ExecutionService:
             
             order = self.pending_orders[order_id]
             
-            # Write to orders table
-            db_order_id = self._write_to_orders_table(order)
-            
             # Simulate execution (in real system, this would call Alpaca API)
             filled_quantity = order.quantity
             fill_price = order.price if order.price else 100.0  # Mock price
-            
-            # Write to executions table
-            self._write_to_executions_table(db_order_id, filled_quantity, fill_price)
             
             # Update positions table
             self._update_positions_table(

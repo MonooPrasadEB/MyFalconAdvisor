@@ -172,7 +172,7 @@ def test_execution_service():
             recommendation=test_recommendation
         )
         
-        if validation_result.get("approved") is not None:
+        if validation_result.get("success") is not None:
             print("✅ Portfolio validation method works")
         else:
             print("❌ Portfolio validation method failed")

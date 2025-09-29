@@ -115,24 +115,30 @@ python tests/test_execution_service_safe.py
 python tests/test_ai_agents.py
 ```
 
-### 📈 Managing Orders
-```bash
-# Check pending Alpaca orders
-python utils/check_alpaca_orders.py
-
-# Check database state
-python utils/check_db.py
-
-# View log monitoring commands
-./utils/log_commands.sh
-```
-
-### 🔄 Background Services
+### 📈 System Monitoring
 ```bash
 # Manual portfolio sync (run anytime)
 ./sync_now.sh
 
-# Daily automatic sync is handled by cron job (10 AM weekdays)
+# View log monitoring commands (shows all available log commands)
+./utils/log_commands.sh
+
+# Monitor daily sync activity
+tail -f /tmp/falcon/daily_sync.log
+
+# Check cron job status
+crontab -l
+```
+
+### 🔄 Daily Sync Status
+```bash
+# Check cron job schedule
+crontab -l
+
+# Monitor daily sync logs
+tail -f /tmp/falcon/daily_sync.log
+
+# Daily automatic sync runs at 10:00 AM weekdays
 ```
 
 ## Architecture

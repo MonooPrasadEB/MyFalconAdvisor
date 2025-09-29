@@ -104,9 +104,11 @@ def test_portfolio_chat():
         # TEST DATA - Mock portfolio for testing chat functionality
         # This is not real user data, just for testing the chat system
         portfolio_data = {
-            "AAPL": {"quantity": 10, "current_price": 250.0, "market_value": 2500.0},
-            "MSFT": {"quantity": 5, "current_price": 500.0, "market_value": 2500.0},
-            "SPY": {"quantity": 20, "current_price": 660.0, "market_value": 13200.0},
+            "assets": [
+                {"symbol": "AAPL", "quantity": 10, "current_price": 250.0, "market_value": 2500.0, "allocation": 13.7, "sector": "Technology"},
+                {"symbol": "MSFT", "quantity": 5, "current_price": 500.0, "market_value": 2500.0, "allocation": 13.7, "sector": "Technology"},
+                {"symbol": "SPY", "quantity": 20, "current_price": 660.0, "market_value": 13200.0, "allocation": 72.5, "sector": "Other"}
+            ],
             "total_value": 18200.0
         }
         

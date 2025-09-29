@@ -232,14 +232,14 @@ class PortfolioSyncService:
                 update_data = {
                     "transaction_id": transaction_id,
                     "status": status,
-                    "updated_at": datetime.now()
+                    "updated_at": datetime.utcnow()
                 }
                 
                 # Add execution details if order was filled
                 if status == "executed" and order_data.get("filled_avg_price"):
                     update_data.update({
                         "price": float(order_data["filled_avg_price"]),
-                        "execution_date": datetime.now(),
+                        "execution_date": datetime.utcnow(),
                         "total_amount": float(order_data["filled_qty"]) * float(order_data["filled_avg_price"])
                     })
                 
@@ -275,7 +275,17 @@ class PortfolioSyncService:
                 row = result.fetchone()
                 if row and row[0]:
                     # Sync if not updated in last hour
-                    time_diff = datetime.now() - row[0]
+                    # Handle timezone-aware/naive datetime comparison
+                    updated_at = row[0]
+                    now = datetime.now()
+                    
+                    # Make both timezone-naive for comparison
+                    if updated_at.tzinfo is not None:
+                        updated_at = updated_at.replace(tzinfo=None)
+                    if now.tzinfo is not None:
+                        now = now.replace(tzinfo=None)
+                        
+                    time_diff = now - updated_at
                     return time_diff.total_seconds() > 3600  # 1 hour
                     
                 return True  # Sync if no update time found

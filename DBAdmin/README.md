@@ -2,6 +2,12 @@
 
 This directory contains all database setup, configuration, and administration files for MyFalconAdvisor.
 
+## 🔐 Current Database Configuration
+- **Database User**: `myfalcon_app` (secure, non-superuser)
+- **Database Host**: `pg-2e1b40a1-falcon-horizon-5e1b-falccon.i.aivencloud.com`
+- **Database Name**: `defaultdb`
+- **Benefits**: No superuser connection conflicts, proper security isolation
+
 ## 📁 Directory Contents
 
 ### Configuration Files

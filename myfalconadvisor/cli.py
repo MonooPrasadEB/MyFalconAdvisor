@@ -24,9 +24,9 @@ from rich.text import Text
 
 from .core.supervisor import investment_advisor_supervisor
 from .core.config import Config
-from .tools.trade_simulator import trade_simulator
 from .tools.database_service import DatabaseService
-from .tools.simple_portfolio_sync import simple_portfolio_sync
+from .tools.portfolio_sync_service import portfolio_sync_service
+from .agents.execution_agent import ExecutionService
 from sqlalchemy import text
 
 console = Console()
@@ -44,6 +44,7 @@ class InvestmentAdvisorCLI:
         self.current_user_id = "usr_348784c4-6f83-4857-b7dc-f5132a38dfee"  # Default user
         self.current_portfolio_id = None
         self.current_user_name = None
+        self.config = Config.get_instance()
         
     def run(self):
         """Main CLI entry point."""
@@ -615,114 +616,9 @@ Examples:
         
         console.print(f"📁 Portfolio: {len(portfolio_data.get('assets', []))} holdings, ${portfolio_data.get('total_value', 0):,.2f} total value\n")
         
-        try:
-            with Progress(
-                SpinnerColumn(),
-                TextColumn("[progress.description]{task.description}"),
-                console=console,
-            ) as progress:
-                task = progress.add_task("Analyzing portfolio and generating trade recommendations...", total=None)
-                
-                # Generate rebalancing plan (with user profile if available)
-                rebalancing_plan = trade_simulator.generate_rebalancing_plan(
-                    portfolio_data, 
-                    client_profile=client_profile
-                )
-                
-                progress.update(task, description="Analysis complete!")
-            
-            # Display results
-            console.print("\n" + "="*60)
-            console.print(f"[bold blue]REBALANCING RECOMMENDATIONS[/bold blue]")
-            console.print("="*60)
-            
-            console.print(f"💰 Portfolio Value: [bold]${rebalancing_plan.portfolio_value:,.2f}[/bold]")
-            console.print(f"🔄 Recommended Trades: [bold]{rebalancing_plan.total_trades}[/bold]")
-            console.print(f"💸 Total Estimated Cost: [bold]${rebalancing_plan.total_cost:,.2f}[/bold]")
-            console.print(f"📈 Portfolio Turnover: [bold]{rebalancing_plan.total_turnover:.1%}[/bold]")
-            console.print(f"💵 Net Cash Impact: [bold]${rebalancing_plan.net_cash_impact:,.2f}[/bold]")
-            console.print()
-            
-            if rebalancing_plan.trades:
-                # Create trades table
-                table = Table(show_header=True, header_style="bold magenta")
-                table.add_column("Symbol", style="cyan", width=8)
-                table.add_column("Action", style="green", width=6)
-                table.add_column("Quantity", justify="right", width=10)
-                table.add_column("Price", justify="right", width=10)
-                table.add_column("Cost", justify="right", width=12)
-                table.add_column("Current %", justify="right", width=10)
-                table.add_column("Target %", justify="right", width=10)
-                table.add_column("Reason", width=25)
-                
-                for trade in rebalancing_plan.trades:
-                    action_color = "green" if trade.action == "buy" else "red"
-                    table.add_row(
-                        trade.symbol,
-                        f"[{action_color}]{trade.action.upper()}[/{action_color}]",
-                        f"{trade.quantity:,}",
-                        f"${trade.current_price:.2f}",
-                        f"${trade.estimated_cost:,.2f}",
-                        f"{trade.current_allocation:.1%}",
-                        f"{trade.target_allocation:.1%}",
-                        trade.reason
-                    )
-                
-                console.print(table)
-                console.print()
-                
-                # Risk impact summary
-                risk_impact = rebalancing_plan.risk_impact
-                console.print("[bold yellow]📊 RISK IMPACT ANALYSIS[/bold yellow]")
-                console.print(f"• Tech Concentration Change: {risk_impact['tech_concentration_change']:+.1%}")
-                console.print(f"• Diversification Improvement: {risk_impact['diversification_improvement']:.1%}")
-                console.print(f"• Portfolio Turnover: {risk_impact['turnover_ratio']:.1%}")
-                
-            else:
-                console.print("[green]✅ Portfolio is already well-balanced - no trades recommended![/green]")
-            
-            # User approval process
-            if rebalancing_plan.trades:
-                console.print("\n" + "="*60)
-                console.print("[bold yellow]💭 AI ADVISOR REASONING[/bold yellow]")
-                
-                # Try to get the LLM reasoning from logs or regenerate summary
-                console.print("The AI analyzed your portfolio and risk profile to generate these recommendations.")
-                console.print("Key considerations:")
-                console.print("• Current sector concentration and diversification")
-                console.print("• Your risk tolerance and investment timeline") 
-                console.print("• Position sizing appropriate for portfolio value")
-                console.print("• Regulatory compliance and best practices")
-                console.print()
-                
-                # Ask for user approval
-                if Confirm.ask("[bold blue]Do you want to proceed with these trade recommendations?[/bold blue]"):
-                    console.print("\n[green]✅ Trade recommendations approved![/green]")
-                    console.print("[yellow]⚠️ Note: These are simulated recommendations. You would need to execute these trades manually through your broker.[/yellow]")
-                    
-                    # Export option
-                    if output_file:
-                        export_path = trade_simulator.export_rebalancing_plan(rebalancing_plan, output_file)
-                        console.print(f"\n[green]✅ Rebalancing plan exported to: {export_path}[/green]")
-                    else:
-                        if Confirm.ask("Export approved rebalancing plan to file?"):
-                            output_name = f"approved_rebalancing_plan_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
-                            export_path = trade_simulator.export_rebalancing_plan(rebalancing_plan, output_name)
-                            console.print(f"[green]✅ Exported to: {export_path}[/green]")
-                else:
-                    console.print("\n[red]❌ Trade recommendations declined.[/red]")
-                    console.print("You can:")
-                    console.print("• Run the analysis again with different parameters")
-                    console.print("• Try the interactive mode for more discussion")
-                    console.print("• Adjust your risk profile and re-run")
-            else:
-                # No trades case - still offer export
-                if output_file:
-                    export_path = trade_simulator.export_rebalancing_plan(rebalancing_plan, output_file)
-                    console.print(f"\n[green]✅ Analysis exported to: {export_path}[/green]")
-                    
-        except Exception as e:
-            console.print(f"[red]❌ Error generating rebalancing plan: {str(e)}[/red]")
+        # Generate rebalancing plan (with user profile if available)
+        console.print("[yellow]⚠️ Rebalancing feature not yet implemented[/yellow]")
+        return
     
     def simulate_trade_legacy(self, portfolio_file: str, symbol: str, action: str, quantity: int):
         """Simulate a specific buy or sell trade."""
@@ -743,7 +639,8 @@ Examples:
                 task = progress.add_task("Fetching market data and simulating trade...", total=None)
                 
                 # Simulate the trade
-                result = trade_simulator.simulate_trade(portfolio_data, symbol, action, quantity)
+                console.print("[yellow]⚠️ Trade simulation not yet implemented - use ExecutionService instead[/yellow]")
+                return
                 
                 progress.update(task, description="Simulation complete!")
             
@@ -985,14 +882,18 @@ Examples:
                 quantity = float(asset.get('quantity', 0)) if asset.get('quantity') else 0
                 current_price = float(asset.get('current_price', 0)) if asset.get('current_price') else 0
                 market_value = float(asset.get('market_value', 0)) if asset.get('market_value') else 0
+                symbol = asset.get('symbol', '')
+                
+                # Use AI to classify sector if not available in database
+                sector = asset.get('sector') or self._classify_stock_sector(symbol)
                 
                 portfolio_data["assets"].append({
-                    "symbol": asset.get('symbol', ''),
+                    "symbol": symbol,
                     "quantity": quantity,
                     "current_price": current_price,
                     "market_value": market_value,
                     "allocation": (market_value / float(portfolio_data["total_value"]) * 100) if portfolio_data["total_value"] > 0 else 0,
-                    "sector": asset.get('sector', 'Unknown')
+                    "sector": sector
                 })
             
             return portfolio_data
@@ -1000,6 +901,54 @@ Examples:
         except Exception as e:
             console.print(f"[yellow]⚠️ Could not auto-load portfolio: {str(e)}[/yellow]")
             return None
+    
+    def _classify_stock_sector(self, symbol: str) -> str:
+        """Use AI to classify stock sector in real-time."""
+        try:
+            from langchain_openai import ChatOpenAI
+            
+            llm = ChatOpenAI(
+                model=self.config.default_model,
+                temperature=0.0,  # Deterministic for classification
+                api_key=self.config.openai_api_key
+            )
+            
+            # Simple sector classification prompt
+            prompt = f"""
+            Classify the stock symbol '{symbol}' into ONE of these sectors:
+            - Technology
+            - Healthcare  
+            - Financial Services
+            - Consumer Discretionary
+            - Consumer Staples
+            - Energy
+            - Utilities
+            - Real Estate
+            - Materials
+            - Industrials
+            - Communication Services
+            - Other
+            
+            For ETFs, classify by primary focus (e.g., SPY=Other, QQQ=Technology, VTI=Other).
+            
+            Respond with ONLY the sector name, nothing else.
+            """
+            
+            response = llm.invoke(prompt)
+            sector = response.content.strip()
+            
+            # Validate response is one of our expected sectors
+            valid_sectors = {
+                'Technology', 'Healthcare', 'Financial Services', 'Consumer Discretionary',
+                'Consumer Staples', 'Energy', 'Utilities', 'Real Estate', 'Materials',
+                'Industrials', 'Communication Services', 'Other'
+            }
+            
+            return sector if sector in valid_sectors else 'Other'
+            
+        except Exception as e:
+            console.print(f"[yellow]⚠️ Could not classify {symbol}: {str(e)}[/yellow]")
+            return 'Other'
     
     def generate_database_rebalancing_plan(self):
         """Generate rebalancing plan from database portfolio."""
@@ -1016,38 +965,8 @@ Examples:
         # Use sample client profile for now
         client_profile = self._get_sample_client_profile()
         
-        try:
-            with Progress(
-                SpinnerColumn(),
-                TextColumn("[progress.description]{task.description}"),
-                console=console,
-            ) as progress:
-                task = progress.add_task("Analyzing portfolio and generating trade recommendations...", total=None)
-                
-                # Generate rebalancing plan
-                rebalancing_plan = trade_simulator.generate_rebalancing_plan(
-                    portfolio_data, 
-                    client_profile=client_profile
-                )
-                
-                progress.update(task, description="Analysis complete!")
-            
-            # Display results (reuse existing display logic)
-            console.print("\n" + "="*60)
-            console.print(f"[bold blue]REBALANCING RECOMMENDATIONS[/bold blue]")
-            console.print("="*60)
-            
-            console.print(f"💰 Portfolio Value: [bold]${rebalancing_plan.portfolio_value:,.2f}[/bold]")
-            console.print(f"🔄 Recommended Trades: [bold]{rebalancing_plan.total_trades}[/bold]")
-            
-            if not rebalancing_plan.trades:
-                console.print("[green]✅ Portfolio is already well-balanced - no trades recommended![/green]")
-            else:
-                console.print(f"💸 Total Estimated Cost: [bold]${rebalancing_plan.total_cost:,.2f}[/bold]")
-                console.print("📈 Trades recommended based on database portfolio analysis")
-                
-        except Exception as e:
-            console.print(f"[red]❌ Error generating rebalancing plan: {str(e)}[/red]")
+        # Generate rebalancing plan
+        console.print("[yellow]⚠️ Rebalancing feature not yet implemented[/yellow]")
     
     def simulate_database_trade(self, symbol: str, action: str, quantity: int):
         """Simulate a trade using database portfolio."""
@@ -1070,7 +989,8 @@ Examples:
                 task = progress.add_task("Fetching market data and simulating trade...", total=None)
                 
                 # Simulate the trade
-                result = trade_simulator.simulate_trade(portfolio_data, symbol, action, quantity)
+                console.print("[yellow]⚠️ Trade simulation not yet implemented - use ExecutionService instead[/yellow]")
+                return
                 
                 progress.update(task, description="Simulation complete!")
             
@@ -1156,7 +1076,7 @@ Examples:
             ) as progress:
                 task = progress.add_task("Synchronizing portfolio...", total=None)
                 
-                result = simple_portfolio_sync.sync_user_now(self.current_user_id)
+                result = portfolio_sync_service.sync_user_now(self.current_user_id)
                 
                 progress.update(task, completed=True)
             
@@ -1187,7 +1107,7 @@ Examples:
     def show_sync_status(self):
         """Show current sync service status."""
         try:
-            status = simple_portfolio_sync.get_sync_status()
+            status = portfolio_sync_service.get_sync_status()
             
             # Create status panel
             status_text = f"""
@@ -1217,7 +1137,8 @@ Examples:
     def show_pending_orders(self):
         """Show pending orders that will be processed when market opens."""
         try:
-            pending_orders = simple_portfolio_sync.get_pending_orders(self.current_user_id)
+            # Get pending orders from database instead
+            pending_orders = self._get_pending_orders_from_db()
             
             if not pending_orders:
                 console.print("✅ No pending orders found")
@@ -1269,6 +1190,31 @@ Examples:
                 
         except Exception as e:
             console.print(f"[red]❌ Error showing pending orders: {str(e)}[/red]")
+    
+    def _get_pending_orders_from_db(self):
+        """Get pending orders from database."""
+        try:
+            with self.db_service.get_session() as session:
+                result = session.execute(text("""
+                    SELECT symbol, transaction_type, quantity, price, created_at
+                    FROM transactions 
+                    WHERE user_id = :user_id AND status = 'pending'
+                    ORDER BY created_at DESC
+                """), {"user_id": self.current_user_id})
+                
+                orders = []
+                for row in result.fetchall():
+                    orders.append({
+                        "symbol": row[0],
+                        "action": row[1],
+                        "quantity": float(row[2]),
+                        "price": float(row[3]) if row[3] else None,
+                        "created_at": row[4]
+                    })
+                return orders
+        except Exception as e:
+            console.print(f"[red]Error fetching orders: {e}[/red]")
+            return []
 
 
 def main():

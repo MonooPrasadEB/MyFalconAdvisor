@@ -131,7 +131,7 @@ class AlpacaTradingService:
             portfolio_update = {
                 "total_value": float(account.portfolio_value),
                 "cash_balance": float(account.cash),
-                "updated_at": datetime.now()
+                "updated_at": datetime.utcnow()
             }
             
             portfolio_updated = self.db_service.update_portfolio(
@@ -153,11 +153,11 @@ class AlpacaTradingService:
                     "asset_name": position.symbol,  # Could enhance with company name lookup
                     "asset_type": "stock",  # Default to stock, could enhance
                     "quantity": float(position.qty),
-                    "average_cost": float(position.avg_cost) if position.avg_cost else 0,
+                    "average_cost": float(position.avg_entry_price) if position.avg_entry_price else 0,
                     "current_price": current_price,
                     "market_value": float(position.market_value) if position.market_value else 0,
                     "allocation_percent": (float(position.market_value) / float(account.portfolio_value)) if position.market_value and account.portfolio_value else 0,
-                    "updated_at": datetime.now()
+                    "updated_at": datetime.utcnow()
                 }
                 
                 # Update or create position in database
@@ -178,7 +178,7 @@ class AlpacaTradingService:
                 new_values={
                     "total_value": float(account.portfolio_value),
                     "positions_count": len(positions),
-                    "sync_timestamp": datetime.now().isoformat()
+                    "sync_timestamp": datetime.utcnow().isoformat()
                 }
             )
             
@@ -188,7 +188,7 @@ class AlpacaTradingService:
                 "cash_balance": float(account.cash),
                 "positions_synced": len(synced_positions),
                 "positions": synced_positions,
-                "sync_timestamp": datetime.now().isoformat()
+                    "sync_timestamp": datetime.utcnow().isoformat()
             }
             
         except Exception as e:
@@ -278,7 +278,7 @@ class AlpacaTradingService:
                 "status": "pending",
                 "broker_reference": str(order.id),
                 "notes": f"Alpaca order submitted: {order.id}",
-                "created_at": datetime.now()
+                "created_at": datetime.utcnow()
             }
             
             transaction_id = self.db_service.create_transaction(transaction_data)
@@ -314,7 +314,7 @@ class AlpacaTradingService:
                     broker_reference=order_id,
                     updates={
                         "status": "executed" if order.status == "filled" else order.status,
-                        "execution_date": datetime.now() if order.status == "filled" else None,
+                        "execution_date": datetime.utcnow() if order.status == "filled" else None,
                         "price": float(order.filled_avg_price) if order.filled_avg_price else None,
                         "total_amount": float(order.filled_qty) * float(order.filled_avg_price) if order.filled_avg_price and order.filled_qty else None
                     }
@@ -351,7 +351,7 @@ class AlpacaTradingService:
                     "symbol": position.symbol,
                     "quantity": float(position.qty),
                     "market_value": float(position.market_value) if position.market_value else 0,
-                    "avg_cost": float(position.avg_cost) if position.avg_cost else 0,
+                    "avg_cost": float(position.avg_entry_price) if position.avg_entry_price else 0,
                     "unrealized_pl": float(position.unrealized_pl) if position.unrealized_pl else 0,
                     "unrealized_plpc": float(position.unrealized_plpc) if position.unrealized_plpc else 0,
                     "current_price": float(position.current_price) if position.current_price else 0
@@ -450,7 +450,7 @@ class AlpacaTradingService:
             "quantity": quantity,
             "order_type": order_type,
             "status": "mock_pending",
-            "submitted_at": datetime.now().isoformat(),
+            "submitted_at": datetime.utcnow().isoformat(),
             "estimated_cost": estimated_cost,
             "note": "This is a mock order - no actual trade was placed"
         }

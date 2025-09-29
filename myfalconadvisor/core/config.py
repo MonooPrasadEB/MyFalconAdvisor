@@ -14,7 +14,7 @@ class Config(BaseSettings):
     
     # AI Model Configuration
     openai_api_key: str = Field(..., env="OPENAI_API_KEY")
-    anthropic_api_key: Optional[str] = Field(None, env="ANTHROPIC_API_KEY")
+    # Note: Gemini support may be added in the future
     
     # Default model settings
     default_model: str = Field("gpt-4", env="DEFAULT_MODEL")
@@ -24,7 +24,6 @@ class Config(BaseSettings):
     # Financial Data APIs
     alpha_vantage_api_key: Optional[str] = Field(None, env="ALPHA_VANTAGE_API_KEY")
     fred_api_key: Optional[str] = Field(None, env="FRED_API_KEY")
-    polygon_api_key: Optional[str] = Field(None, env="POLYGON_API_KEY")
     
     # Alpaca Trading API
     alpaca_api_key: Optional[str] = Field(None, env="ALPACA_API_KEY")
@@ -78,10 +77,8 @@ class Config(BaseSettings):
         """Validate which API keys are configured."""
         return {
             "openai": bool(self.openai_api_key),
-            "anthropic": bool(self.anthropic_api_key),
             "alpha_vantage": bool(self.alpha_vantage_api_key),
             "fred": bool(self.fred_api_key),
-            "polygon": bool(self.polygon_api_key),
         }
     
     def get_market_data_config(self) -> dict:
@@ -93,8 +90,6 @@ class Config(BaseSettings):
         
         if self.market_data_provider == "alpha_vantage" and self.alpha_vantage_api_key:
             config["api_key"] = self.alpha_vantage_api_key
-        elif self.market_data_provider == "polygon" and self.polygon_api_key:
-            config["api_key"] = self.polygon_api_key
             
         return config
 

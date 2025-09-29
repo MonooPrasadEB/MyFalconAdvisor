@@ -165,9 +165,7 @@ def main():
         ("test_database_connection.py", "Database Connection"),
         ("test_alpaca_integration.py", "Alpaca Integration"),
         ("test_ai_agents.py", "AI Agents"),
-        ("test_complete_logging_workflow_readonly.py", "Complete Logging Workflow (READ-ONLY)"),
-        ("test_multi_client_system_readonly.py", "Multi-Client System (READ-ONLY)"),
-        ("test_execution_service_safe.py", "Execution Service (SAFE)")
+        ("test_chat_simple.py", "Chat System")
     ]
     
     # Run tests and collect results

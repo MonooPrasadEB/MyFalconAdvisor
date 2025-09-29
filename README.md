@@ -4,10 +4,10 @@ AI-powered investment advisor with comprehensive logging, database integration, 
 
 ## 🚀 System Status: Production Ready
 - ✅ **100% Test Coverage** - All test suites passing
-- ✅ **Comprehensive Logging** - Dedicated log files for each service
-- ✅ **Database Protection** - READ-ONLY test operations
-- ✅ **Mock Mode Enforced** - No accidental real trades during testing
-- ✅ **Clean Architecture** - Unused tools removed, optimized codebase
+- ✅ **Daily Automatic Sync** - Portfolio syncs at 10 AM weekdays via cron
+- ✅ **Secure Database User** - Using `myfalcon_app` (non-superuser)
+- ✅ **Comprehensive Logging** - Dedicated log files in `/tmp/falcon/`
+- ✅ **Clean Architecture** - Optimized sync process, no background service issues
 
 ## Core Components
 
@@ -18,7 +18,7 @@ AI-powered investment advisor with comprehensive logging, database integration, 
 - `risk_assessment.py` - Quantitative risk management
 - `compliance_checker.py` - Regulatory compliance validation
 - `chat_logger.py` - AI interaction logging to PostgreSQL
-- `portfolio_sync_service.py` - Background Alpaca synchronization service
+- `portfolio_sync_service.py` - Portfolio synchronization with Alpaca (manual/cron)
 - `execution_agent.py` - Trade execution and validation
 - `multi_task_agent.py` - AI-powered portfolio analysis and recommendations
 
@@ -38,8 +38,11 @@ All services write to dedicated log files in `/tmp/falcon/`:
 # Monitor trade execution (most important)
 tail -f /tmp/falcon/execution_agent.log
 
-# Monitor background sync service
-tail -f /tmp/falcon/portfolio_sync.log
+# Monitor daily sync activity
+tail -f /tmp/falcon/daily_sync.log
+
+# Manual portfolio sync
+./sync_now.sh
 
 # Monitor Alpaca API interactions
 tail -f /tmp/falcon/alpaca_trading.log
@@ -126,8 +129,10 @@ python utils/check_db.py
 
 ### 🔄 Background Services
 ```bash
-# Start portfolio sync service
-python -c "from myfalconadvisor.tools.portfolio_sync_service import portfolio_sync_service; portfolio_sync_service.start_sync_service()"
+# Manual portfolio sync (run anytime)
+./sync_now.sh
+
+# Daily automatic sync is handled by cron job (10 AM weekdays)
 ```
 
 ## Architecture
@@ -161,8 +166,23 @@ python -c "from myfalconadvisor.tools.portfolio_sync_service import portfolio_sy
 1. **AI generates recommendation** → `recommendations` table
 2. **Execution agent validates** → `compliance_checks` table
 3. **Trade executed via Alpaca** → `transactions` table
-4. **Background sync updates** → `portfolio_assets` table
+4. **Daily sync updates** → `portfolio_assets` table (via cron job)
 5. **All activity logged** → `/tmp/falcon/*.log` files
+
+## 🔐 Database Configuration
+
+### Secure Database User
+- **Database User**: `myfalcon_app` (non-superuser)
+- **Database Host**: `pg-2e1b40a1-falcon-horizon-5e1b-falccon.i.aivencloud.com`
+- **Database Name**: `defaultdb`
+- **Connection Type**: Secure, limited permissions
+- **Benefits**: No superuser connection conflicts, proper security isolation
+
+### Daily Portfolio Sync
+- **Schedule**: Every weekday at 10:00 AM
+- **Method**: Cron job (reliable, no background processes)
+- **Manual Sync**: `./sync_now.sh` (available anytime)
+- **Logs**: `/tmp/falcon/daily_sync.log`
 
 ## 🛡️ Production Safety
 

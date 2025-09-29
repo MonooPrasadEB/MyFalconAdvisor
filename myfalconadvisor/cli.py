@@ -24,9 +24,11 @@ from rich.text import Text
 
 from .core.supervisor import investment_advisor_supervisor
 from .core.config import Config
-from .tools.trade_simulator import trade_simulator
+# from .tools.trade_simulator import trade_simulator  # Removed - functionality integrated into execution_agent
 from .tools.database_service import DatabaseService
-from .tools.simple_portfolio_sync import simple_portfolio_sync
+# from .tools.simple_portfolio_sync import simple_portfolio_sync  # Removed - replaced by portfolio_sync_service
+from .tools.portfolio_sync_service import portfolio_sync_service
+from .agents.execution_agent import ExecutionService
 from sqlalchemy import text
 
 console = Console()
@@ -624,10 +626,8 @@ Examples:
                 task = progress.add_task("Analyzing portfolio and generating trade recommendations...", total=None)
                 
                 # Generate rebalancing plan (with user profile if available)
-                rebalancing_plan = trade_simulator.generate_rebalancing_plan(
-                    portfolio_data, 
-                    client_profile=client_profile
-                )
+                console.print("[yellow]⚠️ Rebalancing feature temporarily unavailable - being redesigned[/yellow]")
+                return
                 
                 progress.update(task, description="Analysis complete!")
             
@@ -702,12 +702,12 @@ Examples:
                     
                     # Export option
                     if output_file:
-                        export_path = trade_simulator.export_rebalancing_plan(rebalancing_plan, output_file)
+                        console.print("[yellow]⚠️ Export feature temporarily unavailable[/yellow]")
                         console.print(f"\n[green]✅ Rebalancing plan exported to: {export_path}[/green]")
                     else:
                         if Confirm.ask("Export approved rebalancing plan to file?"):
                             output_name = f"approved_rebalancing_plan_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
-                            export_path = trade_simulator.export_rebalancing_plan(rebalancing_plan, output_name)
+                            console.print("[yellow]⚠️ Export feature temporarily unavailable[/yellow]")
                             console.print(f"[green]✅ Exported to: {export_path}[/green]")
                 else:
                     console.print("\n[red]❌ Trade recommendations declined.[/red]")
@@ -743,7 +743,8 @@ Examples:
                 task = progress.add_task("Fetching market data and simulating trade...", total=None)
                 
                 # Simulate the trade
-                result = trade_simulator.simulate_trade(portfolio_data, symbol, action, quantity)
+                console.print("[yellow]⚠️ Trade simulation temporarily unavailable - use ExecutionService instead[/yellow]")
+                return
                 
                 progress.update(task, description="Simulation complete!")
             
@@ -1025,10 +1026,8 @@ Examples:
                 task = progress.add_task("Analyzing portfolio and generating trade recommendations...", total=None)
                 
                 # Generate rebalancing plan
-                rebalancing_plan = trade_simulator.generate_rebalancing_plan(
-                    portfolio_data, 
-                    client_profile=client_profile
-                )
+                console.print("[yellow]⚠️ Rebalancing feature temporarily unavailable[/yellow]")
+                return
                 
                 progress.update(task, description="Analysis complete!")
             
@@ -1070,7 +1069,8 @@ Examples:
                 task = progress.add_task("Fetching market data and simulating trade...", total=None)
                 
                 # Simulate the trade
-                result = trade_simulator.simulate_trade(portfolio_data, symbol, action, quantity)
+                console.print("[yellow]⚠️ Trade simulation temporarily unavailable - use ExecutionService instead[/yellow]")
+                return
                 
                 progress.update(task, description="Simulation complete!")
             
@@ -1156,7 +1156,7 @@ Examples:
             ) as progress:
                 task = progress.add_task("Synchronizing portfolio...", total=None)
                 
-                result = simple_portfolio_sync.sync_user_now(self.current_user_id)
+                result = portfolio_sync_service.sync_user_now(self.current_user_id)
                 
                 progress.update(task, completed=True)
             
@@ -1187,7 +1187,7 @@ Examples:
     def show_sync_status(self):
         """Show current sync service status."""
         try:
-            status = simple_portfolio_sync.get_sync_status()
+            status = portfolio_sync_service.get_sync_status()
             
             # Create status panel
             status_text = f"""
@@ -1217,7 +1217,8 @@ Examples:
     def show_pending_orders(self):
         """Show pending orders that will be processed when market opens."""
         try:
-            pending_orders = simple_portfolio_sync.get_pending_orders(self.current_user_id)
+            # Get pending orders from database instead
+            pending_orders = self._get_pending_orders_from_db()
             
             if not pending_orders:
                 console.print("✅ No pending orders found")
@@ -1269,6 +1270,31 @@ Examples:
                 
         except Exception as e:
             console.print(f"[red]❌ Error showing pending orders: {str(e)}[/red]")
+    
+    def _get_pending_orders_from_db(self):
+        """Get pending orders from database."""
+        try:
+            with self.db_service.get_session() as session:
+                result = session.execute(text("""
+                    SELECT symbol, transaction_type, quantity, price, created_at
+                    FROM transactions 
+                    WHERE user_id = :user_id AND status = 'pending'
+                    ORDER BY created_at DESC
+                """), {"user_id": self.current_user_id})
+                
+                orders = []
+                for row in result.fetchall():
+                    orders.append({
+                        "symbol": row[0],
+                        "action": row[1],
+                        "quantity": float(row[2]),
+                        "price": float(row[3]) if row[3] else None,
+                        "created_at": row[4]
+                    })
+                return orders
+        except Exception as e:
+            console.print(f"[red]Error fetching orders: {e}[/red]")
+            return []
 
 
 def main():

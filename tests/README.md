@@ -5,11 +5,11 @@ This directory contains comprehensive tests for all MyFalconAdvisor components.
 ## 🧪 Test Files
 
 ### Core Integration Tests
-- **`test_database_connection.py`** - PostgreSQL database connectivity (READ-ONLY operations)
+- **`test_database_connection.py`** - PostgreSQL database connectivity with `myfalcon_app` user
 - **`test_alpaca_integration.py`** - Alpaca API connection, market data, and order placement
 - **`test_ai_agents.py`** - AI agents functionality (multi-task, compliance, execution)
-- **`test_complete_logging_workflow_readonly.py`** - Complete AI workflow testing (NO DB WRITES)
-- **`test_multi_client_system.py`** - Multi-client portfolio management system
+- **`test_chat_simple.py`** - Chat functionality and AI responses
+- **`quick_health_check.py`** - System health verification
 
 ### 🛡️ Production Database Protection
 **IMPORTANT:** All tests have been updated to use READ-ONLY operations to protect production data:

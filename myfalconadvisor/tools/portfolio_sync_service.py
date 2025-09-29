@@ -275,7 +275,17 @@ class PortfolioSyncService:
                 row = result.fetchone()
                 if row and row[0]:
                     # Sync if not updated in last hour
-                    time_diff = datetime.now() - row[0]
+                    # Handle timezone-aware/naive datetime comparison
+                    updated_at = row[0]
+                    now = datetime.now()
+                    
+                    # Make both timezone-naive for comparison
+                    if updated_at.tzinfo is not None:
+                        updated_at = updated_at.replace(tzinfo=None)
+                    if now.tzinfo is not None:
+                        now = now.replace(tzinfo=None)
+                        
+                    time_diff = now - updated_at
                     return time_diff.total_seconds() > 3600  # 1 hour
                     
                 return True  # Sync if no update time found

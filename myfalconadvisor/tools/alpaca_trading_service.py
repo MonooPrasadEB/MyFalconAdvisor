@@ -153,7 +153,7 @@ class AlpacaTradingService:
                     "asset_name": position.symbol,  # Could enhance with company name lookup
                     "asset_type": "stock",  # Default to stock, could enhance
                     "quantity": float(position.qty),
-                    "average_cost": float(position.avg_cost) if position.avg_cost else 0,
+                    "average_cost": float(position.avg_entry_price) if position.avg_entry_price else 0,
                     "current_price": current_price,
                     "market_value": float(position.market_value) if position.market_value else 0,
                     "allocation_percent": (float(position.market_value) / float(account.portfolio_value)) if position.market_value and account.portfolio_value else 0,
@@ -351,7 +351,7 @@ class AlpacaTradingService:
                     "symbol": position.symbol,
                     "quantity": float(position.qty),
                     "market_value": float(position.market_value) if position.market_value else 0,
-                    "avg_cost": float(position.avg_cost) if position.avg_cost else 0,
+                    "avg_cost": float(position.avg_entry_price) if position.avg_entry_price else 0,
                     "unrealized_pl": float(position.unrealized_pl) if position.unrealized_pl else 0,
                     "unrealized_plpc": float(position.unrealized_plpc) if position.unrealized_plpc else 0,
                     "current_price": float(position.current_price) if position.current_price else 0

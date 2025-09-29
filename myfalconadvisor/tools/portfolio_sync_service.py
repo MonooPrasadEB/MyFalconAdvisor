@@ -232,14 +232,14 @@ class PortfolioSyncService:
                 update_data = {
                     "transaction_id": transaction_id,
                     "status": status,
-                    "updated_at": datetime.now()
+                    "updated_at": datetime.utcnow()
                 }
                 
                 # Add execution details if order was filled
                 if status == "executed" and order_data.get("filled_avg_price"):
                     update_data.update({
                         "price": float(order_data["filled_avg_price"]),
-                        "execution_date": datetime.now(),
+                        "execution_date": datetime.utcnow(),
                         "total_amount": float(order_data["filled_qty"]) * float(order_data["filled_avg_price"])
                     })
                 

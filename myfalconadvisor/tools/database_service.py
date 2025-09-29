@@ -244,7 +244,7 @@ class DatabaseService:
                 "action": action,
                 "old_values": old_values,
                 "new_values": new_values,
-                "created_at": datetime.now()
+                "created_at": datetime.utcnow()
             }
             
             with self.engine.connect() as conn:

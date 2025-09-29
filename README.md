@@ -22,10 +22,10 @@ AI-powered investment advisor with comprehensive logging, database integration, 
 - `execution_agent.py` - Trade execution and validation
 - `multi_task_agent.py` - AI-powered portfolio analysis and recommendations
 
-### 🔮 Optional Tools (Future Features)
-- `alpha_vantage_service.py` - Fundamental data integration
-- `fred_service.py` - Economic indicators
-- `multi_client_portfolio_manager.py` - Multi-user portfolio management
+### 🔮 Removed Tools (Simplified Architecture)
+- ~~`alpha_vantage_service.py`~~ - Removed (redundant with Alpaca market data)
+- ~~`fred_service.py`~~ - Removed (not needed for core functionality)  
+- ~~`multi_client_portfolio_manager.py`~~ - Removed (created fake portfolios vs real Alpaca data)
 
 ### 📁 Utility Scripts
 See [utils/README.md](utils/README.md) for comprehensive utility documentation.
@@ -95,8 +95,9 @@ DB_NAME=your_db_name
 
 # AI Services
 OPENAI_API_KEY=your_openai_key
-ALPHA_VANTAGE_API_KEY=your_alpha_vantage_key
-FRED_API_KEY=your_fred_key
+# Optional: Additional data sources (not currently used)
+# ALPHA_VANTAGE_API_KEY=your_alpha_vantage_key  
+# FRED_API_KEY=your_fred_key
 
 # Logging
 LOG_LEVEL=INFO

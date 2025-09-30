@@ -236,14 +236,16 @@ class DatabaseService:
             return True
         
         try:
+            import json
+            
             audit_data = {
                 "audit_id": str(uuid.uuid4()),
                 "user_id": user_id,
                 "entity_type": entity_type,
                 "entity_id": entity_id,
                 "action": action,
-                "old_values": old_values,
-                "new_values": new_values,
+                "old_values": json.dumps(old_values) if old_values else None,
+                "new_values": json.dumps(new_values) if new_values else None,
                 "created_at": datetime.utcnow()
             }
             

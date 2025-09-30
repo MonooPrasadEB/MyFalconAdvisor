@@ -176,7 +176,12 @@ Examples:
         console.print(Panel.fit("🤖 MyFalconAdvisor - Interactive Mode", style="bold green"))
         
         # Get user information and provide personalized greeting
-        user_info = self._get_current_user_info()
+        try:
+            user_info = self._get_current_user_info()
+        except Exception as e:
+            console.print(f"⚠️ Could not fetch user info: {e}")
+            user_info = None
+            
         if user_info:
             user_name = f"{user_info.get('first_name', '')} {user_info.get('last_name', '')}".strip()
             if not user_name:
@@ -195,10 +200,24 @@ Examples:
         console.print("🔄 Loading your data from database...")
         
         # Auto-load client profile from database
-        self.client_profile = self._get_sample_client_profile()  # Now loads from database
+        try:
+            self.client_profile = self._get_sample_client_profile()  # Now loads from database
+        except Exception as e:
+            console.print(f"Error loading user profile: {e}")
+            console.print("💡 Using sample profile (in real app, this would come from your account)")
+            self.client_profile = {
+                "age": 35,
+                "risk_tolerance": "moderate",
+                "investment_goals": ["growth", "income"],
+                "time_horizon": "long_term"
+            }
         
         # Auto-load user's portfolio
-        self.portfolio_data = self._load_database_portfolio_auto()
+        try:
+            self.portfolio_data = self._load_database_portfolio_auto()
+        except Exception as e:
+            console.print(f"Error loading portfolio: {e}")
+            self.portfolio_data = None
         
         if self.portfolio_data:
             console.print(f"✅ Portfolio loaded: {len(self.portfolio_data.get('assets', []))} holdings, ${self.portfolio_data.get('total_value', 0):,.2f} total value")
@@ -240,16 +259,29 @@ Examples:
                 
                 # Process the request
                 with console.status("[bold green]AI Advisor is thinking..."):
-                    result = self.supervisor.process_client_request(
-                        request=user_input,
-                        client_profile=self.client_profile,
-                        portfolio_data=self.portfolio_data,
-                        session_id=self.session_id
-                    )
-                    
-                    # Capture session_id for subsequent requests
-                    if not self.session_id and result.get("session_id"):
-                        self.session_id = result["session_id"]
+                    try:
+                        result = self.supervisor.process_client_request(
+                            request=user_input,
+                            client_profile=self.client_profile,
+                            portfolio_data=self.portfolio_data,
+                            session_id=self.session_id
+                        )
+                        
+                        # Capture session_id for subsequent requests
+                        if not self.session_id and result.get("session_id"):
+                            self.session_id = result["session_id"]
+                            
+                    except Exception as e:
+                        console.print(f"Database error with params: {e}")
+                        console.print("Failed to start chat session")
+                        console.print("Failed to start chat session - continuing without logging")
+                        
+                        # Provide a fallback response
+                        result = {
+                            "response": "I don't see any portfolio data loaded. Please load your portfolio file first using the 'portfolio' command, then I can help answer your question: \"" + user_input + "\"",
+                            "session_id": None,
+                            "workflow_complete": True
+                        }
                 
                 # Display response
                 self._display_interactive_response(result)
@@ -884,8 +916,8 @@ Examples:
                 market_value = float(asset.get('market_value', 0)) if asset.get('market_value') else 0
                 symbol = asset.get('symbol', '')
                 
-                # Use AI to classify sector if not available in database
-                sector = asset.get('sector') or self._classify_stock_sector(symbol)
+                # Use sector from database, or 'Other' if not available (skip AI classification during startup for speed)
+                sector = asset.get('sector') or 'Other'
                 
                 portfolio_data["assets"].append({
                     "symbol": symbol,

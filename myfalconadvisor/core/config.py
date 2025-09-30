@@ -1,13 +1,27 @@
 """Configuration management for MyFalconAdvisor."""
 
 import os
+from pathlib import Path
 from typing import Optional
 from pydantic import Field
 from pydantic_settings import BaseSettings
 from dotenv import load_dotenv
 
+# Find project root and load .env file
+def find_project_root():
+    """Find the project root directory containing .env file."""
+    current_path = Path(__file__).resolve()
+    for parent in current_path.parents:
+        env_file = parent / ".env"
+        if env_file.exists():
+            return parent
+    return Path.cwd()  # Fallback to current directory
+
+project_root = find_project_root()
+env_file = project_root / ".env"
+
 # Load environment variables from .env file
-load_dotenv()
+load_dotenv(env_file)
 
 class Config(BaseSettings):
     """Configuration settings for MyFalconAdvisor."""

@@ -46,6 +46,7 @@ class Config(BaseSettings):
     alpaca_paper_trading: bool = Field(True, env="ALPACA_PAPER_TRADING")
     
     # Database Configuration
+    database_url: Optional[str] = Field(None, env="DATABASE_URL")
     db_host: Optional[str] = Field(None, env="DB_HOST")
     db_port: int = Field(5432, env="DB_PORT")
     db_name: Optional[str] = Field(None, env="DB_NAME")

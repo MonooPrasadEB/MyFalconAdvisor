@@ -48,7 +48,14 @@ class DatabaseService:
                 
                 db_url = f"postgresql://{db_user}:{db_password}@{db_host}:{db_port}/{db_name}"
             
-            self.engine = create_engine(db_url, echo=getattr(config, 'db_echo', False))
+            self.engine = create_engine(
+                db_url, 
+                echo=getattr(config, 'db_echo', False),
+                pool_size=5,  # Maximum number of permanent connections to keep
+                max_overflow=10,  # Maximum number of connections that can overflow the pool
+                pool_timeout=30,  # Timeout for getting connection from pool
+                pool_recycle=3600  # Recycle connections after 1 hour
+            )
             self.SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=self.engine)
             
             # Test connection

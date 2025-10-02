@@ -825,6 +825,12 @@ Format your response as a clear, professional trade execution analysis.
             holdings_summary = ", ".join([f"{asset.get('symbol')} ({asset.get('allocation', 0):.1f}%)" 
                                         for asset in top_holdings])
             
+            # Create detailed holdings list with ALL positions
+            detailed_holdings = "\n".join([
+                f"  • {asset.get('symbol')}: {asset.get('quantity', 0):.2f} shares @ ${asset.get('current_price', 0):.2f} = ${asset.get('market_value', 0):,.2f} ({asset.get('allocation', 0):.1f}%) - Sector: {asset.get('sector', 'Unknown')}"
+                for asset in sorted(assets, key=lambda x: x.get('allocation', 0), reverse=True)
+            ])
+            
             # Create conversational prompt for LLM
             portfolio_context = f"""
 PORTFOLIO CONTEXT:
@@ -832,8 +838,10 @@ PORTFOLIO CONTEXT:
 - Holdings: {num_assets} positions
 - Tech Allocation: {tech_allocation:.1f}%
 - Largest Position: {max_allocation:.1f}%
-- Top Holdings: {holdings_summary}
 - Risk Profile: {"High (tech-focused)" if tech_allocation > 60 else "Moderate"}
+
+COMPLETE HOLDINGS LIST:
+{detailed_holdings}
 """
 
             # Use LLM to generate conversational response
@@ -846,13 +854,18 @@ CLIENT QUESTION: "{request}"
 
 Provide a conversational, helpful response that:
 1. Directly addresses their specific question
-2. References their actual portfolio data when relevant
-3. Gives personalized advice based on their holdings
-4. Uses a friendly, professional tone
-5. Keeps response focused and concise (2-3 paragraphs max)
+2. References their actual portfolio holdings from the COMPLETE HOLDINGS LIST above
+3. When asked about specific stocks, check if they own them by reviewing the complete holdings list
+4. Gives personalized advice based on their actual positions
+5. Uses a friendly, professional tone
+6. Keeps response focused and concise (2-3 paragraphs max)
+
+IMPORTANT: 
+- If asked about a specific stock, ALWAYS check the complete holdings list first before saying they don't own it
+- Use the actual quantities, prices, and allocations from the holdings list
+- Reference the sector information provided for each holding
 
 If they want to stay aggressive, support that preference and give advice on how to optimize their aggressive strategy.
-If they ask about specific stocks, reference their actual holdings.
 Be conversational, not templated.
 """)
             

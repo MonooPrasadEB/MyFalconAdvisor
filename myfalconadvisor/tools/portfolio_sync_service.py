@@ -277,7 +277,7 @@ class PortfolioSyncService:
                     # Sync if not updated in last hour
                     # Handle timezone-aware/naive datetime comparison
                     updated_at = row[0]
-                    now = datetime.now()
+                    now = datetime.utcnow()
                     
                     # Make both timezone-naive for comparison
                     if updated_at.tzinfo is not None:
@@ -286,6 +286,7 @@ class PortfolioSyncService:
                         now = now.replace(tzinfo=None)
                         
                     time_diff = now - updated_at
+                    logger.debug(f"Last update: {updated_at}, Now: {now}, Diff: {time_diff.total_seconds()}s")
                     return time_diff.total_seconds() > 3600  # 1 hour
                     
                 return True  # Sync if no update time found
@@ -296,13 +297,17 @@ class PortfolioSyncService:
     
     def _is_market_hours(self) -> bool:
         """Check if current time is during market hours (9:30 AM - 4:00 PM ET)."""
-        now = datetime.now()
-        # Simplified timezone handling - in production would use pytz
+        import pytz
+        
+        # Get current time in Eastern Time
+        now_utc = datetime.now(pytz.UTC)
+        now_et = now_utc.astimezone(pytz.timezone('US/Eastern'))
+        
         market_open = dt_time(9, 30)
         market_close = dt_time(16, 0)
         
-        return (market_open <= now.time() <= market_close and 
-                now.weekday() < 5)  # Monday = 0, Friday = 4
+        return (market_open <= now_et.time() <= market_close and 
+                now_et.weekday() < 5)  # Monday = 0, Friday = 4
     
     def _is_weekend(self) -> bool:
         """Check if current day is weekend."""

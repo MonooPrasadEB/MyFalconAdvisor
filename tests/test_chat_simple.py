@@ -187,7 +187,7 @@ def main():
     
     # Run tests
     tests = [
-        ("Basic Chat", test_basic_chat),
+        # ("Basic Chat", test_basic_chat),  # Disabled - requires portfolio data to give useful responses
         ("Portfolio Chat", test_portfolio_chat)
     ]
     

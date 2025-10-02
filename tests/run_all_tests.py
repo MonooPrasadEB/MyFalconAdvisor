@@ -142,9 +142,11 @@ def run_test_suite(test_file: str, suite_name: str = None) -> float:
 
 def main():
     """Run all test suites."""
+    start_time = datetime.now()
+    
     print("\n🧪 MyFalconAdvisor Complete Test Suite")
     print("=" * 80)
-    print(f"🕐 Started at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    print(f"🕐 Started at: {start_time.strftime('%Y-%m-%d %H:%M:%S')}")
     print("🛡️  PRODUCTION DATABASE PROTECTION: Tests use READ-ONLY operations")
     print("⚠️  MOCK MODE ENABLED: No real API calls or orders will be made")
     print("=" * 80)
@@ -215,7 +217,13 @@ def main():
     print(f"\n🏆 System Status: {status}")
     print(f"💬 Assessment: {message}")
     
-    print(f"\n🕐 Completed at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    end_time = datetime.now()
+    duration = end_time - start_time
+    duration_minutes = int(duration.total_seconds() // 60)
+    duration_seconds = int(duration.total_seconds() % 60)
+    
+    print(f"\n🕐 Completed at: {end_time.strftime('%Y-%m-%d %H:%M:%S')}")
+    print(f"⏱️  Total test duration: {duration_minutes}m {duration_seconds}s")
 
 if __name__ == "__main__":
     main()

@@ -608,7 +608,7 @@ Examples:
                     age = today.year - dob.year - ((today.month, today.day) < (dob.month, dob.day))
                 
                 # Map database fields to expected profile format
-        return {
+                return {
                     "age": age or 32,  # fallback age
                     "annual_income": float(user_row[7]) if user_row[7] else 85000,
                     "net_worth": float(user_row[8]) if user_row[8] else 150000,
@@ -742,7 +742,7 @@ Examples:
             console.print(f"\n[green]✅ Trade simulation completed successfully![/green]")
             console.print(f"[yellow]⚠️ Note: This is a simulation based on your portfolio.[/yellow]")
             console.print("Next steps:")
-                console.print(f"• Expected total cost: ${trade_details['total_cost']:,.2f}")
+            console.print(f"• Expected total cost: ${trade_details['total_cost']:,.2f}")
             console.print("• Use interactive mode to discuss this trade with AI advisor")
             console.print("• In a real app, you'd review and confirm via the web interface")
             
@@ -874,7 +874,7 @@ Examples:
                     
                     console.print(f"✅ Loaded portfolio: {len(portfolio_data['assets'])} holdings, ${portfolio_data['total_value']:,.2f} total value")
                     return portfolio_data
-            else:
+                else:
                     console.print("[red]Invalid selection[/red]")
                     return None
                     

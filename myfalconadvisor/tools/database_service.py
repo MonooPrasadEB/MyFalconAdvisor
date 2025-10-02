@@ -334,7 +334,10 @@ class DatabaseService:
         try:
             with self.engine.connect() as conn:
                 query = """
-                SELECT pa.*, s.company_name, s.sector, s.industry
+                SELECT pa.*, 
+                       COALESCE(s.company_name, pa.asset_name) as company_name,
+                       COALESCE(pa.sector, s.sector) as sector,
+                       COALESCE(pa.industry, s.industry) as industry
                 FROM portfolio_assets pa
                 LEFT JOIN securities s ON pa.symbol = s.symbol
                 WHERE pa.portfolio_id = :portfolio_id

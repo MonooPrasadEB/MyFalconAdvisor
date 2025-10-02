@@ -96,8 +96,8 @@ class AlpacaTradingService:
                 "cash": float(account.cash),
                 "portfolio_value": float(account.portfolio_value),
                 "positions_count": len(positions),
-                "day_trade_count": account.day_trade_count,
-                "pattern_day_trader": account.pattern_day_trader
+                "day_trade_count": getattr(account, 'day_trade_count', 0),
+                "pattern_day_trader": getattr(account, 'pattern_day_trader', False)
             }
             
         except Exception as e:

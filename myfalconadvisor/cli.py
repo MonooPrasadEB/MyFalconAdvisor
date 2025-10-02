@@ -266,7 +266,7 @@ Examples:
                             portfolio_data=self.portfolio_data,
                             session_id=self.session_id
                         )
-                        
+                    
                         # Capture session_id for subsequent requests
                         if not self.session_id and result.get("session_id"):
                             self.session_id = result["session_id"]
@@ -647,8 +647,8 @@ Examples:
             console.print("[yellow]💡 No client profile provided - using general rebalancing logic[/yellow]")
         
         console.print(f"📁 Portfolio: {len(portfolio_data.get('assets', []))} holdings, ${portfolio_data.get('total_value', 0):,.2f} total value\n")
-        
-        # Generate rebalancing plan (with user profile if available)
+                
+                # Generate rebalancing plan (with user profile if available)
         console.print("[yellow]⚠️ Rebalancing feature not yet implemented[/yellow]")
         return
     
@@ -1050,7 +1050,7 @@ Examples:
             console.print(f"\n[green]✅ Trade simulation completed successfully![/green]")
             console.print(f"[yellow]⚠️ Note: This is a simulation based on your database portfolio.[/yellow]")
             console.print("• Use interactive mode to discuss this trade with the AI advisor")
-                
+            
         except Exception as e:
             console.print(f"[red]❌ Error simulating trade: {str(e)}[/red]")
     

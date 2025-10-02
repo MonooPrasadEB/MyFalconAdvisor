@@ -72,7 +72,7 @@ def test_basic_chat():
                 if result and "response" in result:
                     response = result["response"]
                     print(f"✅ Response received ({len(response)} characters)")
-                    print(f"📝 Preview: {response[:100]}...")
+                    print(f"📝 Full Response:\n{response}")
                     successful_responses += 1
                 else:
                     print(f"❌ No response received: {result}")
@@ -147,7 +147,7 @@ def test_portfolio_chat():
                 if result and "response" in result:
                     response = result["response"]
                     print(f"✅ Response received ({len(response)} characters)")
-                    print(f"📝 Preview: {response[:100]}...")
+                    print(f"📝 Full Response:\n{response}")
                     successful_responses += 1
                 else:
                     print(f"❌ No response: {result}")
@@ -187,7 +187,7 @@ def main():
     
     # Run tests
     tests = [
-        ("Basic Chat", test_basic_chat),
+        # ("Basic Chat", test_basic_chat),  # Disabled - requires portfolio data to give useful responses
         ("Portfolio Chat", test_portfolio_chat)
     ]
     

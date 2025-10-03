@@ -1,0 +1,142 @@
+{
+  "version": "v1",
+  "rules": {
+    "CONC-001": {
+      "rule_id": "CONC-001",
+      "regulation_source": "SEC",
+      "rule_name": "Position Concentration Limit",
+      "description": "Individual position should not exceed threshold of portfolio value",
+      "severity": "warning",
+      "applies_to": [
+        "individual",
+        "institutional"
+      ],
+      "effective_date": "2000-01-01T00:00:00Z",
+      "last_updated": "2025-10-03T03:44:08.024780",
+      "params": {
+        "max_position": 0.25
+      }
+    },
+    "CONC-002": {
+      "rule_id": "CONC-002",
+      "regulation_source": "SEC",
+      "rule_name": "Sector Concentration Limit",
+      "description": "Single sector allocation should not exceed threshold of portfolio",
+      "severity": "warning",
+      "applies_to": [
+        "individual",
+        "institutional"
+      ],
+      "effective_date": "2000-01-01T00:00:00Z",
+      "last_updated": "2025-10-03T03:44:08.024780",
+      "params": {
+        "max_sector": 0.4
+      }
+    },
+    "CONC-003": {
+      "rule_id": "CONC-003",
+      "regulation_source": "FINRA",
+      "rule_name": "Concentrated Position Disclosure",
+      "description": "Must disclose risks for concentrated positions",
+      "severity": "major",
+      "applies_to": [
+        "advisor"
+      ],
+      "effective_date": "2012-07-09T00:00:00Z",
+      "last_updated": "2025-10-03T03:44:08.024780"
+    },
+    "SUIT-001": {
+      "rule_id": "SUIT-001",
+      "regulation_source": "FINRA",
+      "rule_name": "Suitability Rule 2111",
+      "description": "Recommendations must be suitable for client based on profile",
+      "severity": "critical",
+      "applies_to": [
+        "advisor"
+      ],
+      "effective_date": "2010-07-09T00:00:00Z",
+      "last_updated": "2025-10-03T03:44:08.024780"
+    },
+    "SUIT-002": {
+      "rule_id": "SUIT-002",
+      "regulation_source": "FINRA",
+      "rule_name": "Quantitative Suitability",
+      "description": "Series of transactions must be suitable in aggregate",
+      "severity": "critical",
+      "applies_to": [
+        "advisor"
+      ],
+      "effective_date": "2010-07-09T00:00:00Z",
+      "last_updated": "2025-10-03T03:44:08.024780"
+    },
+    "SUIT-003": {
+      "rule_id": "SUIT-003",
+      "regulation_source": "FINRA",
+      "rule_name": "Reasonable Basis",
+      "description": "Advisors must have reasonable basis for recommendations",
+      "severity": "warning",
+      "applies_to": [
+        "advisor"
+      ],
+      "effective_date": "2010-07-09T00:00:00Z",
+      "last_updated": "2025-10-03T03:44:08.024780"
+    },
+    "TAX-001": {
+      "rule_id": "TAX-001",
+      "regulation_source": "IRS",
+      "rule_name": "Wash Sale Rule Section 1091",
+      "description": "Cannot claim loss if repurchasing substantially identical security within 30 days",
+      "severity": "warning",
+      "applies_to": [
+        "individual",
+        "institutional"
+      ],
+      "effective_date": "1921-01-01T00:00:00Z",
+      "last_updated": "2025-10-03T03:44:08.024780"
+    },
+    "TRAD-001": {
+      "rule_id": "TRAD-001",
+      "regulation_source": "FINRA",
+      "rule_name": "Pattern Day Trader Rule",
+      "description": "Accounts under $25K limited to 3 day trades per 5-day period",
+      "severity": "warning",
+      "applies_to": [
+        "individual"
+      ],
+      "effective_date": "2001-02-27T00:00:00Z",
+      "last_updated": "2025-10-03T03:44:08.024780",
+      "params": {
+        "min_equity": 25000
+      }
+    },
+    "TRAD-002": {
+      "rule_id": "TRAD-002",
+      "regulation_source": "SEC",
+      "rule_name": "Market Manipulation Prevention",
+      "description": "Cannot engage in manipulative or deceptive trading practices",
+      "severity": "critical",
+      "applies_to": [
+        "individual",
+        "advisor"
+      ],
+      "effective_date": "1934-06-06T00:00:00Z",
+      "last_updated": "2025-10-03T03:44:08.024780"
+    },
+    "PENNY-001": {
+      "rule_id": "PENNY-001",
+      "regulation_source": "SEC",
+      "rule_name": "Penny Stock Disclosure",
+      "description": "Trades in penny stocks (< $5) require heightened suitability and disclosure",
+      "severity": "advisory",
+      "applies_to": [
+        "individual",
+        "advisor"
+      ],
+      "effective_date": "2001-07-09T00:00:00Z",
+      "last_updated": "2025-10-03T03:44:08.024780",
+      "params": {
+        "min_price": 5.0
+      }
+    }
+  }
+}

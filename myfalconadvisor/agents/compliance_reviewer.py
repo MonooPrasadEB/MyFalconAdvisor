@@ -21,6 +21,14 @@ from ..tools.compliance_checker import (
 )
 from ..core.config import Config
 
+# Enhanced compliance with dynamic policy engine
+try:
+    from ..agents.compliance_adapter import ComplianceAdapter
+    ENHANCED_COMPLIANCE_AVAILABLE = True
+except ImportError:
+    ENHANCED_COMPLIANCE_AVAILABLE = False
+    logger.warning("Enhanced compliance adapter not available - using legacy system only")
+
 config = Config.get_instance()
 logger = logging.getLogger(__name__)
 
@@ -91,7 +99,7 @@ class ComplianceReviewerAgent:
     4. Audit trail and documentation compliance
     """
     
-    def __init__(self):
+    def __init__(self, db_service=None):
         self.name = "compliance_reviewer"
         self.llm = ChatOpenAI(
             model=config.default_model,
@@ -105,6 +113,19 @@ class ComplianceReviewerAgent:
             trade_compliance_tool,
             portfolio_compliance_tool
         ]
+        
+        # Enhanced compliance adapter (optional - adds scoring & audit trail)
+        self.compliance_adapter = None
+        if ENHANCED_COMPLIANCE_AVAILABLE and db_service:
+            try:
+                self.compliance_adapter = ComplianceAdapter(
+                    policy_path='myfalconadvisor/core/compliance_policies.json',
+                    watch=True,  # Auto-reload policies
+                    db_service=db_service
+                )
+                logger.info("✅ Enhanced compliance system enabled with dynamic policies")
+            except Exception as e:
+                logger.warning(f"Could not initialize enhanced compliance: {e}")
         
         # Review tracking
         self.pending_reviews: Dict[str, ReviewResult] = {}
@@ -268,10 +289,40 @@ Remember: Your primary responsibility is ensuring regulatory compliance while ma
             review_id = f"rec_review_{int(datetime.now().timestamp())}"
             start_time = datetime.now()
             
+            # Step 0: Enhanced quantitative compliance check (if available)
+            enhanced_check = None
+            if self.compliance_adapter and recommendation_context.get('action') in ['buy', 'sell']:
+                try:
+                    enhanced_check = self.compliance_adapter.check_trade(
+                        trade_type=recommendation_context.get('action', 'buy'),
+                        symbol=recommendation_context.get('symbol', ''),
+                        quantity=recommendation_context.get('quantity', 0),
+                        price=recommendation_context.get('price', 0),
+                        portfolio_value=client_profile.get('portfolio_value', 100000),
+                        client_type=client_profile.get('client_type', 'individual'),
+                        account_type=client_profile.get('account_type', 'taxable')
+                    )
+                    logger.info(f"✅ Enhanced compliance check: Score {enhanced_check.get('compliance_score')}/100")
+                except Exception as e:
+                    logger.warning(f"Enhanced compliance check failed: {e}")
+            
             # Step 1: Analyze original content for compliance issues
             compliance_issues = self._identify_compliance_issues(
                 recommendation_content, client_profile, recommendation_context
             )
+            
+            # Merge enhanced violations if available
+            if enhanced_check and enhanced_check.get('violations'):
+                for violation in enhanced_check['violations']:
+                    compliance_issues.append(ComplianceIssue(
+                        issue_id=violation['rule_id'],
+                        severity=violation['severity'],
+                        category="regulatory",
+                        description=violation['description'],
+                        regulation_reference=violation['rule_id'],
+                        suggested_resolution=violation['recommended_action'],
+                        auto_correctable=violation.get('auto_correctable', False)
+                    ))
             
             # Step 2: Check suitability and best interest compliance
             suitability_check = self._validate_suitability(
@@ -282,6 +333,10 @@ Remember: Your primary responsibility is ensuring regulatory compliance while ma
             required_disclosures = self._get_required_disclosures(
                 recommendation_context, compliance_issues
             )
+            
+            # Add enhanced disclosures if available
+            if enhanced_check and enhanced_check.get('requires_disclosure'):
+                required_disclosures.append("This trade requires additional regulatory disclosure")
             
             # Step 4: Rewrite content for compliance and clarity
             revised_content = self._rewrite_recommendation(
@@ -312,13 +367,15 @@ Remember: Your primary responsibility is ensuring regulatory compliance while ma
             return {
                 "review_id": review_id,
                 "status": review_result.status.value,
-                "compliance_score": self._calculate_compliance_score(compliance_issues),
+                "compliance_score": enhanced_check.get('compliance_score') if enhanced_check else self._calculate_compliance_score(compliance_issues),
+                "quantitative_score": enhanced_check.get('compliance_score') if enhanced_check else None,
                 "original_content": recommendation_content,
                 "revised_content": revised_content,
                 "compliance_issues": [issue.dict() for issue in compliance_issues],
                 "suitability_check": suitability_check,
                 "required_disclosures": required_disclosures,
-                "final_approval_required": review_result.final_approval_required
+                "final_approval_required": review_result.final_approval_required,
+                "enhanced_check": enhanced_check  # Include full enhanced check results
             }
             
         except Exception as e:

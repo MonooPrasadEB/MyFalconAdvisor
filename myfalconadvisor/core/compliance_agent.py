@@ -117,6 +117,7 @@ class AuditLogger:
             elif payload.get("event")=="compliance_event":
                 # Log to compliance_checks table
                 result = payload.get("result", {})
+                input_data = payload.get("input", {})
                 check_result = "pass" if payload.get("decision") == "approved" else "fail"
                 if len(result.get("warnings", [])) > 0 and check_result == "pass":
                     check_result = "warning"
@@ -135,22 +136,53 @@ class AuditLogger:
                 }
                 check_type = type_mapping.get(payload.get("type"), "regulatory")
                 
+                # Extract user_id, portfolio_id from input if available
+                user_id = input_data.get("user_id") or input_data.get("client_profile", {}).get("client_id")
+                portfolio_id = input_data.get("portfolio_id")
+                transaction_id = input_data.get("transaction_id")
+                recommendation_id = input_data.get("recommendation_id")
+                
+                # Validate UUIDs - set to None if not valid UUID format or if they don't exist in DB
+                # For standalone compliance checks (no transaction yet), these will be None
+                # They'll be populated when integrated with execution_agent
+                import re
+                uuid_pattern = re.compile(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$', re.IGNORECASE)
+                if portfolio_id and not uuid_pattern.match(str(portfolio_id)):
+                    portfolio_id = None
+                if transaction_id and not uuid_pattern.match(str(transaction_id)):
+                    transaction_id = None
+                if recommendation_id and not uuid_pattern.match(str(recommendation_id)):
+                    recommendation_id = None
+                
+                # Note: Foreign key constraints mean these UUIDs must exist in their respective tables
+                # If they don't exist, set to None (compliance check can still proceed)
+                
                 # Use raw SQL insert via engine
                 if hasattr(self.db_service, 'engine') and self.db_service.engine:
                     from sqlalchemy import text
                     with self.db_service.engine.connect() as conn:
                         insert_query = """
-                        INSERT INTO compliance_checks(check_type, rule_name, rule_description, check_result, 
-                                                     violation_details, severity, checked_at)
-                        VALUES (:check_type, :rule_name, :rule_description, :check_result, 
-                               :violation_details, :severity, NOW())
+                        INSERT INTO compliance_checks(
+                            user_id, portfolio_id, transaction_id, recommendation_id,
+                            check_type, rule_name, rule_description, check_result, 
+                            violation_details, severity, checked_at
+                        )
+                        VALUES (
+                            :user_id, :portfolio_id, :transaction_id, :recommendation_id,
+                            :check_type, :rule_name, :rule_description, :check_result, 
+                            :violation_details, :severity, NOW()
+                        )
                         """
                         conn.execute(text(insert_query), {
+                            "user_id": user_id,
+                            "portfolio_id": portfolio_id,
+                            "transaction_id": transaction_id,
+                            "recommendation_id": recommendation_id,
                             "check_type": check_type,
                             "rule_name": ",".join(payload.get("rule_ids", [])),
                             "rule_description": f"Compliance check for {payload.get('subject')}",
                             "check_result": check_result,
-                            "violation_details": json.dumps({"input": payload.get("input"), "result": result, "score": payload.get("score")}),
+                            "violation_details": json.dumps({"input": input_data, "result": result, "score": payload.get("score")}),
                             "severity": severity
                         })
                         conn.commit()
@@ -304,7 +336,7 @@ class ComplianceChecker:
         score=100
         for v in violations: score -= {"critical":40,"major":30,"warning":20,"advisory":10}.get(v.severity,15)
         score -= 5*len(warnings); return max(0, score)
-    def check_trade_compliance(self, *, trade_type, symbol, quantity, price, portfolio_value, client_type="individual", account_type="taxable"):
+    def check_trade_compliance(self, *, trade_type, symbol, quantity, price, portfolio_value, client_type="individual", account_type="taxable", user_id=None, portfolio_id=None, transaction_id=None, recommendation_id=None):
         violations=[]; warnings=[]; recommendations=[]; trade_value=quantity*price
         violations += self.validate_position_concentration(trade_value, portfolio_value)
         ws_w, ws_v = self.validate_wash_sale(trade_type, account_type); warnings += ws_w; violations += ws_v
@@ -315,9 +347,18 @@ class ComplianceChecker:
         trade_approved = not any(v for v in violations if v.severity in ("critical","major"))
         requires_disclosure = len(violations)>0
         result = TradeComplianceCheck(trade_approved, violations, warnings, recommendations, requires_disclosure, score)
-        AuditLogger.get().compliance_event("trade", symbol,
-            {"trade_type":trade_type,"quantity":quantity,"price":price,"portfolio_value":portfolio_value,"client_type":client_type,"account_type":account_type},
-            _dataclass_to_dict(result), [v.rule_id for v in violations], score)
+        
+        # Convert UUIDs to strings for JSON serialization
+        audit_input = {
+            "trade_type":trade_type,"quantity":quantity,"price":price,"portfolio_value":portfolio_value,
+            "client_type":client_type,"account_type":account_type,
+            "user_id":str(user_id) if user_id else None,
+            "portfolio_id":str(portfolio_id) if portfolio_id else None,
+            "transaction_id":str(transaction_id) if transaction_id else None,
+            "recommendation_id":str(recommendation_id) if recommendation_id else None
+        }
+        
+        AuditLogger.get().compliance_event("trade", symbol, audit_input, _dataclass_to_dict(result), [v.rule_id for v in violations], score)
         return result
     def check_portfolio_compliance(self, *, assets, portfolio_value, client_profile):
         violations=[]; warnings=[]; recommendations=[]

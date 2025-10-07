@@ -28,7 +28,8 @@ class ComplianceAdapter:
         
         self.checker = ComplianceChecker(self.store)
 
-    def check_trade(self, **kwargs): 
+    def check_trade(self, **kwargs):
+        # Pass all parameters (including optional tracking fields) to checker
         res = self.checker.check_trade_compliance(**kwargs)
         return _dataclass_to_dict(res)
 

@@ -144,8 +144,8 @@ class AlpacaTradingService:
             # Sync positions
             synced_positions = []
             for position in positions:
-                # Get current market data for the position
-                current_price = self._get_current_price(position.symbol)
+                # Use current_price from Alpaca position object (more reliable than separate API call)
+                current_price = float(position.current_price) if hasattr(position, 'current_price') and position.current_price else self._get_current_price(position.symbol)
                 
                 asset_data = {
                     "portfolio_id": portfolio_id,
@@ -416,14 +416,35 @@ class AlpacaTradingService:
             # Mock prices for testing
             mock_prices = {
                 "AAPL": 193.50, "MSFT": 417.10, "GOOGL": 175.20,
-                "AMZN": 151.94, "TSLA": 248.42, "SPY": 502.43
+                "AMZN": 151.94, "TSLA": 248.42, "SPY": 502.43,
+                "NVDA": 182.30, "TSLA": 445.25, "BND": 74.30,
+                "JNJ": 180.34, "KO": 65.75, "PG": 152.40,
+                "QQQ": 599.31, "VTI": 327.55
             }
             return mock_prices.get(symbol, 100.0)
         
         try:
             market_data = self.get_market_data(symbol)
-            return market_data.get("latest_price", 100.0)
-        except:
+            # Check if there's an error first
+            if "error" in market_data:
+                logger.warning(f"Could not get price for {symbol}: {market_data['error']}")
+                return 100.0
+            
+            # Get latest_price, fallback to None check
+            latest_price = market_data.get("latest_price")
+            if latest_price is not None:
+                return float(latest_price)
+            
+            # Fallback: try to get close price from latest bar
+            latest_bar = market_data.get("latest_bar")
+            if latest_bar and latest_bar.get("close"):
+                return float(latest_bar["close"])
+                
+            logger.warning(f"No price data available for {symbol}, using fallback")
+            return 100.0
+            
+        except Exception as e:
+            logger.error(f"Error getting price for {symbol}: {e}")
             return 100.0  # Fallback price
     
     def _calculate_order_cost(self, quantity: float, price: float) -> float:

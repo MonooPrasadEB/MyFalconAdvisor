@@ -166,6 +166,7 @@ def main():
     test_suites = [
         ("test_database_connection.py", "Database Connection"),
         ("test_alpaca_integration.py", "Alpaca Integration"),
+        ("test_portfolio_sync_integrity.py", "Portfolio Sync Integrity"),
         ("test_ai_agents.py", "AI Agents"),
         ("test_chat_simple.py", "Chat System")
     ]

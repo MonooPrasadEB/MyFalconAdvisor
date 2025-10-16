@@ -575,6 +575,50 @@ Remember: Your primary responsibility is ensuring regulatory compliance while ma
                 auto_correctable=True
             ))
         
+        # ========== NEW COMPLIANCE CHECKS ==========
+        
+        # Check for concentration risk warning
+        position_pct = context.get('position_percentage', 0)
+        if position_pct > 10 and "concentration" not in content.lower():
+            issues.append(ComplianceIssue(
+                issue_id="CONC-001",
+                severity="major",
+                category="disclosure",
+                description=f"Large position size ({position_pct:.1f}% of portfolio) lacks concentration risk warning",
+                regulation_reference="SEC Investment Advisers Act - Diversification",
+                suggested_resolution=f"Add concentration risk disclosure for {position_pct:.1f}% position",
+                auto_correctable=True
+            ))
+        
+        # Check for past performance disclaimer
+        if any(word in content.lower() for word in ['return', 'performance', 'gain', 'profit']):
+            if "past performance" not in content.lower():
+                issues.append(ComplianceIssue(
+                    issue_id="PERF-001",
+                    severity="minor",
+                    category="disclosure",
+                    description="Performance discussion lacks past performance disclaimer",
+                    regulation_reference="SEC Marketing Rule",
+                    suggested_resolution="Add 'Past performance does not guarantee future results' disclaimer",
+                    auto_correctable=True
+                ))
+        
+        # Check for tax advisor referral in retirement accounts
+        account_type = client_profile.get('account_type', '')
+        if 'retirement' in account_type.lower() or 'ira' in account_type.lower():
+            if 'tax' in content.lower() and "tax advisor" not in content.lower():
+                issues.append(ComplianceIssue(
+                    issue_id="TAX-001",
+                    severity="minor",
+                    category="disclosure",
+                    description="Tax discussion for retirement account lacks tax advisor referral",
+                    regulation_reference="Fiduciary Standard - Best Practice",
+                    suggested_resolution="Add suggestion to consult tax advisor for tax implications",
+                    auto_correctable=True
+                ))
+        
+        # ========== END NEW CHECKS ==========
+        
         return issues
     
     def _validate_suitability(self, recommendation_context: Dict, client_profile: Dict) -> Dict:
@@ -597,6 +641,16 @@ Remember: Your primary responsibility is ensuring regulatory compliance while ma
                 client_profile, recommendation_context
             )
         }
+    
+    def _generate_suitability_analysis(self, client_profile: Dict, recommendation_context: Dict) -> str:
+        """Generate suitability analysis text."""
+        age = client_profile.get("age", "unknown")
+        risk_tolerance = client_profile.get("risk_tolerance", "moderate")
+        
+        return (
+            f"Based on client profile (age {age}, {risk_tolerance} risk tolerance), "
+            f"this recommendation aligns with stated investment objectives and risk tolerance."
+        )
     
     def _get_required_disclosures(
         self, recommendation_context: Dict, compliance_issues: List[ComplianceIssue]

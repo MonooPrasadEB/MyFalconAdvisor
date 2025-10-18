@@ -14,9 +14,7 @@ from contextlib import contextmanager
 import subprocess
 
 from pydantic import BaseModel, Field
-from sqlalchemy import text
 from ..core.config import Config
-from .database_service import DatabaseService
 
 config = Config.get_instance()
 logger = logging.getLogger(__name__)
@@ -59,63 +57,78 @@ class PostgreSQLChatLogger:
         self.password = os.getenv("DB_PASSWORD")
         self.current_session: Optional[ChatSession] = None
         
-        # Use the shared database service instead of creating separate connections
-        self.db_service = DatabaseService()
-        
     def _execute_sql(self, sql: str, return_result: bool = False) -> Optional[List[Dict]]:
-        """Execute SQL command using the shared database connection pool"""
+        """Execute SQL command using psql"""
         try:
-            # Use the shared database service connection pool
-            session = self.db_service.get_session()
-            if not session:
-                logger.warning("Database service not available - running in mock mode")
-                return []
+            # Set password environment variable
+            env = os.environ.copy()
+            env["PGPASSWORD"] = self.password
             
-            with session:
-                # Execute the SQL using the pooled connection
-                result = session.execute(text(sql))
+            cmd = [
+                "psql",
+                "-h", self.host,
+                "-p", self.port,
+                "-U", self.user,
+                "-d", self.database,
+                "--set=sslmode=require",
+                "-t",  # Tuples only (no headers)
+                "-c", sql
+            ]
+            
+            result = subprocess.run(
+                cmd, 
+                capture_output=True, 
+                text=True, 
+                timeout=30,
+                env=env
+            )
+            
+            if result.returncode == 0:
+                if return_result and result.stdout.strip():
+                    # Parse simple results (for basic queries)
+                    lines = [line.strip() for line in result.stdout.strip().split('\n') if line.strip()]
+                    return [{"result": line} for line in lines]
+                return []
+            else:
+                logger.error(f"SQL execution failed: {result.stderr}")
+                return None
                 
-                if return_result:
-                    # For SELECT queries, fetch results
-                    rows = result.fetchall()
-                    if rows:
-                        # Convert rows to dictionaries
-                        columns = result.keys()
-                        return [dict(zip(columns, row)) for row in rows]
-                    return []
-                else:
-                    # For INSERT/UPDATE/DELETE queries, commit the transaction
-                    session.commit()
-                    return []
-                    
         except Exception as e:
-            logger.error(f"Database operation failed: {e}")
+            logger.error(f"Database error: {e}")
             return None
     
     def _execute_sql_with_params(self, sql: str, params: tuple) -> Optional[Any]:
-        """Execute SQL command with parameters using the shared database connection pool"""
-        try:
-            # Use the shared database service connection pool
-            session = self.db_service.get_session()
-            if not session:
-                logger.warning("Database service not available - running in mock mode")
-                return True
+        """Execute SQL command with parameters using psycopg2 to avoid SQL injection"""
+        if not self.password:
+            logger.warning("Database password not available - skipping SQL execution")
+            return True
             
-            with session:
-                # Execute the SQL using the pooled connection with parameters
-                result = session.execute(text(sql), params)
+        try:
+            import psycopg2
+            conn = psycopg2.connect(
+                host=self.host,
+                port=self.port,
+                user=self.user,
+                password=self.password,
+                database=self.database,
+                sslmode='require'
+            )
+            
+            with conn.cursor() as cur:
+                cur.execute(sql, params)
+                conn.commit()
                 
                 # Return results if it's a SELECT query
                 if sql.strip().upper().startswith('SELECT'):
-                    rows = result.fetchall()
-                    return [dict(zip(result.keys(), row)) for row in rows]
-                
-                session.commit()
+                    return cur.fetchall()
                 return True
                 
         except Exception as e:
             logger.error(f"Database error with params: {e}")
             return None
+        finally:
+            if 'conn' in locals():
+                conn.close()
     
     def start_session(self, user_id: Optional[str] = None, session_type: str = "general", 
                      context_data: Optional[Dict[str, Any]] = None) -> Optional[str]:

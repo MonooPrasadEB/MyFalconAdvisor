@@ -51,10 +51,11 @@ class DatabaseService:
             self.engine = create_engine(
                 db_url, 
                 echo=getattr(config, 'db_echo', False),
-                pool_size=5,  # Maximum number of permanent connections to keep
-                max_overflow=10,  # Maximum number of connections that can overflow the pool
+                pool_size=2,  # Maximum number of permanent connections to keep (reduced from 5)
+                max_overflow=3,  # Maximum number of connections that can overflow the pool (reduced from 10)
                 pool_timeout=30,  # Timeout for getting connection from pool
-                pool_recycle=3600  # Recycle connections after 1 hour
+                pool_recycle=1800,  # Recycle connections after 30 minutes (reduced from 1 hour)
+                pool_pre_ping=True  # Verify connections before using them
             )
             self.SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=self.engine)
             

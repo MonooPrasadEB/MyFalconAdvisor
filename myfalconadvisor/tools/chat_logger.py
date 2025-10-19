@@ -92,7 +92,7 @@ class PostgreSQLChatLogger:
             logger.error(f"Database operation failed: {e}")
             return None
     
-    def _execute_sql_with_params(self, sql: str, params: tuple) -> Optional[Any]:
+    def _execute_sql_with_params(self, sql: str, params: Dict[str, Any]) -> Optional[Any]:
         """Execute SQL command with parameters using the shared database connection pool"""
         try:
             # Use the shared database service connection pool
@@ -141,17 +141,17 @@ class PostgreSQLChatLogger:
                 session_id, user_id, session_type, status, context_data, 
                 started_at, total_messages, total_tokens_used
             ) VALUES (
-                %s, %s, %s, %s, %s, CURRENT_TIMESTAMP, 0, 0
+                :session_id, :user_id, :session_type, :status, :context_data, CURRENT_TIMESTAMP, 0, 0
             )
             """
             
-            params = (
-                session.session_id, 
-                user_id_param, 
-                session.session_type, 
-                session.status, 
-                context_json
-            )
+            params = {
+                "session_id": session.session_id,
+                "user_id": user_id_param,
+                "session_type": session.session_type,
+                "status": session.status,
+                "context_data": context_json
+            }
             
             result = self._execute_sql_with_params(sql, params)
             if result is not None:
@@ -196,20 +196,21 @@ class PostgreSQLChatLogger:
                 message_id, session_id, agent_type, message_type, message_content,
                 message_metadata, tokens_used, processing_time_ms, created_at
             ) VALUES (
-                %s, %s, %s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP
+                :message_id, :session_id, :agent_type, :message_type, :message_content,
+                :message_metadata, :tokens_used, :processing_time_ms, CURRENT_TIMESTAMP
             )
             """
             
-            params = (
-                message.message_id, 
-                message.session_id, 
-                message.agent_type,
-                message.message_type, 
-                content, 
-                metadata_json,
-                tokens_used, 
-                processing_time_ms
-            )
+            params = {
+                "message_id": message.message_id,
+                "session_id": message.session_id,
+                "agent_type": message.agent_type,
+                "message_type": message.message_type,
+                "message_content": content,
+                "message_metadata": metadata_json,
+                "tokens_used": tokens_used,
+                "processing_time_ms": processing_time_ms
+            }
             
             result = self._execute_sql_with_params(sql, params)
             if result is not None:

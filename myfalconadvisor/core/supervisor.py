@@ -831,17 +831,27 @@ Format your response as a clear, professional trade execution analysis.
                 for asset in sorted(assets, key=lambda x: x.get('allocation', 0), reverse=True)
             ])
             
+            # Get cash balance
+            cash_balance = portfolio_data.get('cash_balance', 0)
+            equity_value = sum(asset.get('market_value', 0) for asset in assets)
+            cash_percentage = (cash_balance / total_value * 100) if total_value > 0 else 0
+            
             # Create conversational prompt for LLM
             portfolio_context = f"""
 PORTFOLIO CONTEXT:
-- Total Value: ${total_value:,.2f}
-- Holdings: {num_assets} positions
+- Total Portfolio Value: ${total_value:,.2f}
+- Cash Balance: ${cash_balance:,.2f} ({cash_percentage:.1f}%)
+- Equity Holdings Value: ${equity_value:,.2f} ({100 - cash_percentage:.1f}%)
+- Number of Stock Positions: {num_assets}
 - Tech Allocation: {tech_allocation:.1f}%
 - Largest Position: {max_allocation:.1f}%
 - Risk Profile: {"High (tech-focused)" if tech_allocation > 60 else "Moderate"}
 
 COMPLETE HOLDINGS LIST:
 {detailed_holdings}
+
+CASH POSITION:
+  • Cash: ${cash_balance:,.2f} ({cash_percentage:.1f}% of portfolio)
 """
 
             # Use LLM to generate conversational response

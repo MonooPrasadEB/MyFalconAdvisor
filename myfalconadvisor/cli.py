@@ -8,6 +8,7 @@ with real financial data integration and comprehensive compliance checking.
 
 import argparse
 import asyncio
+import atexit
 import json
 import sys
 from datetime import datetime
@@ -42,6 +43,9 @@ class InvestmentAdvisorCLI:
         self.client_profile = None
         self.db_service = DatabaseService()
         self.current_user_id = "usr_348784c4-6f83-4857-b7dc-f5132a38dfee"  # Default user
+        
+        # Register cleanup on exit
+        atexit.register(self._cleanup)
         self.current_portfolio_id = None
         self.current_user_name = None
         self.config = Config.get_instance()
@@ -347,6 +351,14 @@ Examples:
             )
         
         self._display_results(result)
+    
+    def _cleanup(self):
+        """Cleanup resources on exit."""
+        try:
+            if self.db_service:
+                self.db_service.dispose()
+        except Exception as e:
+            logger.error(f"Error during cleanup: {e}")
     
     def validate_config(self):
         """Validate API keys and configuration."""

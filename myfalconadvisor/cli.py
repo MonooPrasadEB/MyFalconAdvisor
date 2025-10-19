@@ -587,7 +587,11 @@ Examples:
     def _load_user_profile_from_database(self) -> Optional[Dict]:
         """Load user profile from database."""
         try:
-            with self.db_service.get_session() as session:
+            session = self.db_service.get_session()
+            if not session:
+                return None
+            
+            with session:
                 result = session.execute(text("""
                     SELECT user_id, email, first_name, last_name, dob, 
                            risk_profile, objective, annual_income_usd, net_worth_usd
@@ -754,7 +758,12 @@ Examples:
         console.print(Panel.fit("💳 Your Recent Transactions", style="bold blue"))
         
         try:
-            with self.db_service.get_session() as session:
+            session = self.db_service.get_session()
+            if not session:
+                console.print("[yellow]⚠️ Database not available - cannot retrieve transactions[/yellow]")
+                return
+            
+            with session:
                 query = """
                     SELECT t.transaction_id, t.portfolio_id, t.symbol, t.transaction_type, 
                            t.quantity, t.price, t.total_amount, t.created_at,
@@ -1057,7 +1066,11 @@ Examples:
     def _get_current_user_info(self) -> Optional[Dict]:
         """Get information about the current user from database."""
         try:
-            with self.db_service.get_session() as session:
+            session = self.db_service.get_session()
+            if not session:
+                return None
+            
+            with session:
                 result = session.execute(text("""
                     SELECT user_id, email, first_name, last_name 
                     FROM users 
@@ -1226,7 +1239,11 @@ Examples:
     def _get_pending_orders_from_db(self):
         """Get pending orders from database."""
         try:
-            with self.db_service.get_session() as session:
+            session = self.db_service.get_session()
+            if not session:
+                return []
+            
+            with session:
                 result = session.execute(text("""
                     SELECT symbol, transaction_type, quantity, price, created_at
                     FROM transactions 

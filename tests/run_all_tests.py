@@ -115,6 +115,7 @@ def run_test_suite(test_file: str, suite_name: str = None) -> float:
             r"Database Score: (\d+)/(\d+)",
             r"Alpaca Score: (\d+)/(\d+)",
             r"AI Agents Score: (\d+)/(\d+)",
+            r"Compliance Reviewer Score: (\d+)/(\d+)",
             r"Multi-Client Score: (\d+)/(\d+)"
         ]
         
@@ -168,6 +169,7 @@ def main():
         ("test_alpaca_integration.py", "Alpaca Integration"),
         ("test_portfolio_sync_integrity.py", "Portfolio Sync Integrity"),
         ("test_ai_agents.py", "AI Agents"),
+        ("test_compliance_reviewer.py", "Compliance Reviewer"),
         ("test_chat_simple.py", "Chat System")
     ]
     

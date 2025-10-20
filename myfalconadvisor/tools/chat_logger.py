@@ -14,7 +14,9 @@ from contextlib import contextmanager
 import subprocess
 
 from pydantic import BaseModel, Field
+from sqlalchemy import text
 from ..core.config import Config
+from .database_service import DatabaseService
 
 config = Config.get_instance()
 logger = logging.getLogger(__name__)
@@ -57,78 +59,63 @@ class PostgreSQLChatLogger:
         self.password = os.getenv("DB_PASSWORD")
         self.current_session: Optional[ChatSession] = None
         
+        # Use the shared database service instead of creating separate connections
+        self.db_service = DatabaseService()
+        
     def _execute_sql(self, sql: str, return_result: bool = False) -> Optional[List[Dict]]:
-        """Execute SQL command using psql"""
+        """Execute SQL command using the shared database connection pool"""
         try:
-            # Set password environment variable
-            env = os.environ.copy()
-            env["PGPASSWORD"] = self.password
-            
-            cmd = [
-                "psql",
-                "-h", self.host,
-                "-p", self.port,
-                "-U", self.user,
-                "-d", self.database,
-                "--set=sslmode=require",
-                "-t",  # Tuples only (no headers)
-                "-c", sql
-            ]
-            
-            result = subprocess.run(
-                cmd, 
-                capture_output=True, 
-                text=True, 
-                timeout=30,
-                env=env
-            )
-            
-            if result.returncode == 0:
-                if return_result and result.stdout.strip():
-                    # Parse simple results (for basic queries)
-                    lines = [line.strip() for line in result.stdout.strip().split('\n') if line.strip()]
-                    return [{"result": line} for line in lines]
+            # Use the shared database service connection pool
+            session = self.db_service.get_session()
+            if not session:
+                logger.warning("Database service not available - running in mock mode")
                 return []
-            else:
-                logger.error(f"SQL execution failed: {result.stderr}")
-                return None
+            
+            with session:
+                # Execute the SQL using the pooled connection
+                result = session.execute(text(sql))
                 
+                if return_result:
+                    # For SELECT queries, fetch results
+                    rows = result.fetchall()
+                    if rows:
+                        # Convert rows to dictionaries
+                        columns = result.keys()
+                        return [dict(zip(columns, row)) for row in rows]
+                    return []
+                else:
+                    # For INSERT/UPDATE/DELETE queries, commit the transaction
+                    session.commit()
+                    return []
+                    
         except Exception as e:
-            logger.error(f"Database error: {e}")
+            logger.error(f"Database operation failed: {e}")
             return None
     
-    def _execute_sql_with_params(self, sql: str, params: tuple) -> Optional[Any]:
-        """Execute SQL command with parameters using psycopg2 to avoid SQL injection"""
-        if not self.password:
-            logger.warning("Database password not available - skipping SQL execution")
-            return True
-            
+    def _execute_sql_with_params(self, sql: str, params: Dict[str, Any]) -> Optional[Any]:
+        """Execute SQL command with parameters using the shared database connection pool"""
         try:
-            import psycopg2
-            conn = psycopg2.connect(
-                host=self.host,
-                port=self.port,
-                user=self.user,
-                password=self.password,
-                database=self.database,
-                sslmode='require'
-            )
+            # Use the shared database service connection pool
+            session = self.db_service.get_session()
+            if not session:
+                logger.warning("Database service not available - running in mock mode")
+                return True
             
-            with conn.cursor() as cur:
-                cur.execute(sql, params)
-                conn.commit()
+            with session:
+                # Execute the SQL using the pooled connection with parameters
+                result = session.execute(text(sql), params)
                 
                 # Return results if it's a SELECT query
                 if sql.strip().upper().startswith('SELECT'):
-                    return cur.fetchall()
+                    rows = result.fetchall()
+                    return [dict(zip(result.keys(), row)) for row in rows]
+                
+                session.commit()
                 return True
                 
         except Exception as e:
             logger.error(f"Database error with params: {e}")
             return None
-        finally:
-            if 'conn' in locals():
-                conn.close()
     
     def start_session(self, user_id: Optional[str] = None, session_type: str = "general", 
                      context_data: Optional[Dict[str, Any]] = None) -> Optional[str]:
@@ -154,17 +141,17 @@ class PostgreSQLChatLogger:
                 session_id, user_id, session_type, status, context_data, 
                 started_at, total_messages, total_tokens_used
             ) VALUES (
-                %s, %s, %s, %s, %s, CURRENT_TIMESTAMP, 0, 0
+                :session_id, :user_id, :session_type, :status, :context_data, CURRENT_TIMESTAMP, 0, 0
             )
             """
             
-            params = (
-                session.session_id, 
-                user_id_param, 
-                session.session_type, 
-                session.status, 
-                context_json
-            )
+            params = {
+                "session_id": session.session_id,
+                "user_id": user_id_param,
+                "session_type": session.session_type,
+                "status": session.status,
+                "context_data": context_json
+            }
             
             result = self._execute_sql_with_params(sql, params)
             if result is not None:
@@ -209,20 +196,21 @@ class PostgreSQLChatLogger:
                 message_id, session_id, agent_type, message_type, message_content,
                 message_metadata, tokens_used, processing_time_ms, created_at
             ) VALUES (
-                %s, %s, %s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP
+                :message_id, :session_id, :agent_type, :message_type, :message_content,
+                :message_metadata, :tokens_used, :processing_time_ms, CURRENT_TIMESTAMP
             )
             """
             
-            params = (
-                message.message_id, 
-                message.session_id, 
-                message.agent_type,
-                message.message_type, 
-                content, 
-                metadata_json,
-                tokens_used, 
-                processing_time_ms
-            )
+            params = {
+                "message_id": message.message_id,
+                "session_id": message.session_id,
+                "agent_type": message.agent_type,
+                "message_type": message.message_type,
+                "message_content": content,
+                "message_metadata": metadata_json,
+                "tokens_used": tokens_used,
+                "processing_time_ms": processing_time_ms
+            }
             
             result = self._execute_sql_with_params(sql, params)
             if result is not None:

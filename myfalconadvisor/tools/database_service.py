@@ -10,9 +10,10 @@ from datetime import datetime
 from typing import Dict, List, Optional, Any
 import uuid
 
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine, text, event
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.pool import Pool
 
 from ..core.config import Config
 
@@ -51,12 +52,19 @@ class DatabaseService:
             self.engine = create_engine(
                 db_url, 
                 echo=getattr(config, 'db_echo', False),
-                pool_size=5,  # Maximum number of permanent connections to keep
-                max_overflow=10,  # Maximum number of connections that can overflow the pool
+                pool_size=5,  # Permanent connections (balanced for concurrent operations)
+                max_overflow=10,  # Allow bursts up to 15 total connections
                 pool_timeout=30,  # Timeout for getting connection from pool
-                pool_recycle=3600  # Recycle connections after 1 hour
+                pool_recycle=1800,  # Recycle connections after 30 minutes
+                pool_pre_ping=True,  # Verify connections before using them
+                connect_args={
+                    "options": "-c idle_in_transaction_session_timeout=300000"  # 5 minutes in milliseconds
+                }
             )
             self.SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=self.engine)
+            
+            # Add connection pool event listeners
+            self._setup_connection_events()
             
             # Test connection
             with self.engine.connect() as conn:
@@ -75,6 +83,69 @@ class DatabaseService:
         if self.SessionLocal:
             return self.SessionLocal()
         return None
+    
+    def dispose(self):
+        """Dispose of all connections in the pool."""
+        if self.engine:
+            self.engine.dispose()
+            logger.info("Database connection pool disposed")
+    
+    def close_idle_connections(self):
+        """Close idle connections to free up database slots."""
+        if not self.engine:
+            return
+        
+        try:
+            with self.engine.connect() as conn:
+                result = conn.execute(text("""
+                    SELECT pg_terminate_backend(pid)
+                    FROM pg_stat_activity
+                    WHERE usename = :username
+                    AND state = 'idle'
+                    AND pid != pg_backend_pid()
+                """), {"username": getattr(config, 'db_user', 'postgres')})
+                conn.commit()
+                logger.info("Closed idle database connections")
+        except Exception as e:
+            logger.error(f"Failed to close idle connections: {e}")
+    
+    def _setup_connection_events(self):
+        """Set up connection pool event listeners for better management."""
+        if not self.engine:
+            return
+        
+        @event.listens_for(Pool, "connect")
+        def receive_connect(dbapi_conn, connection_record):
+            """Called when a new connection is created."""
+            logger.debug("New database connection created")
+        
+        @event.listens_for(Pool, "checkout")
+        def receive_checkout(dbapi_conn, connection_record, connection_proxy):
+            """Called when a connection is checked out from the pool."""
+            logger.debug("Connection checked out from pool")
+        
+        @event.listens_for(Pool, "checkin")
+        def receive_checkin(dbapi_conn, connection_record):
+            """Called when a connection is returned to the pool."""
+            logger.debug("Connection returned to pool")
+    
+    def get_pool_status(self):
+        """Get current connection pool status."""
+        if not self.engine:
+            return {"status": "unavailable"}
+        
+        try:
+            pool = self.engine.pool
+            return {
+                "size": pool.size(),
+                "checked_in": pool.checkedin(),
+                "checked_out": pool.checkedout(),
+                "overflow": pool.overflow(),
+                "total": pool.size() + pool.overflow()
+            }
+        except Exception as e:
+            logger.error(f"Failed to get pool status: {e}")
+            return {"error": str(e)}
     
     def update_portfolio(self, portfolio_id: str, updates: Dict) -> bool:
         """Update portfolio with new values."""

@@ -10,7 +10,7 @@ import sys
 from pathlib import Path
 sys.path.append(str(Path(__file__).parent.parent))
 
-from myfalconadvisor.tools.database_service import DatabaseService
+from myfalconadvisor.tools.database_service import database_service
 from myfalconadvisor.tools.alpaca_trading_service import alpaca_trading_service
 from sqlalchemy import text
 
@@ -19,11 +19,15 @@ def test_portfolio_assets_integrity():
     print("\n🧪 TEST 1: Portfolio Assets Data Integrity")
     print("=" * 60)
     
-    db = DatabaseService()
     passed = 0
     total = 0
     
-    with db.get_session() as session:
+    session = database_service.get_session()
+    if not session:
+        print("⚠️  Database not available - skipping test")
+        return 0, 0
+    
+    with session:
         # Test 1.1: No NULL quantities or prices
         total += 1
         result = session.execute(text("""
@@ -94,11 +98,15 @@ def test_portfolio_totals_integrity():
     print("\n🧪 TEST 2: Portfolio Totals Integrity")
     print("=" * 60)
     
-    db = DatabaseService()
     passed = 0
     total = 0
     
-    with db.get_session() as session:
+    session = database_service.get_session()
+    if not session:
+        print("⚠️  Database not available - skipping test")
+        return 0, 0
+    
+    with session:
         # Get all portfolios with calculated totals
         result = session.execute(text("""
             SELECT 
@@ -172,8 +180,7 @@ def test_sync_operation():
         passed += 1  # Don't penalize for live mode
     
     # Test 3.3: Database service is operational
-    db = DatabaseService()
-    if db.engine is not None:
+    if database_service.engine is not None:
         print("✅ Database service is operational")
         passed += 1
     else:
@@ -187,11 +194,15 @@ def test_orphaned_assets():
     print("\n🧪 TEST 4: No Orphaned Assets")
     print("=" * 60)
     
-    db = DatabaseService()
     passed = 0
     total = 1
     
-    with db.get_session() as session:
+    session = database_service.get_session()
+    if not session:
+        print("⚠️  Database not available - skipping test")
+        return 0, 0
+    
+    with session:
         result = session.execute(text("""
             SELECT pa.symbol, pa.portfolio_id 
             FROM portfolio_assets pa

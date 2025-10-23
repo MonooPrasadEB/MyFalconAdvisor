@@ -22,7 +22,7 @@ from alpaca.data.requests import StockLatestQuoteRequest, StockBarsRequest
 from alpaca.data.timeframe import TimeFrame
 
 from ..core.config import Config
-from ..tools.database_service import DatabaseService
+from ..tools.database_service import database_service
 from ..core.logging_config import get_alpaca_logger
 
 config = Config.get_instance()
@@ -43,7 +43,7 @@ class AlpacaTradingService:
     
     def __init__(self):
         self.config = config
-        self.db_service = DatabaseService()
+        self.db_service = database_service  # Use shared singleton
         
         # Initialize Alpaca clients
         if not config.alpaca_api_key or not config.alpaca_secret_key:

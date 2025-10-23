@@ -16,7 +16,7 @@ import subprocess
 from pydantic import BaseModel, Field
 from sqlalchemy import text
 from ..core.config import Config
-from .database_service import DatabaseService
+from .database_service import database_service
 
 config = Config.get_instance()
 logger = logging.getLogger(__name__)
@@ -59,8 +59,8 @@ class PostgreSQLChatLogger:
         self.password = os.getenv("DB_PASSWORD")
         self.current_session: Optional[ChatSession] = None
         
-        # Use the shared database service instead of creating separate connections
-        self.db_service = DatabaseService()
+        # Use the shared database service singleton
+        self.db_service = database_service
         
     def _execute_sql(self, sql: str, return_result: bool = False) -> Optional[List[Dict]]:
         """Execute SQL command using the shared database connection pool"""

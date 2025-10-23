@@ -25,7 +25,7 @@ from rich.text import Text
 
 from .core.supervisor import investment_advisor_supervisor
 from .core.config import Config
-from .tools.database_service import DatabaseService
+from .tools.database_service import database_service
 from .tools.portfolio_sync_service import portfolio_sync_service
 from .agents.execution_agent import ExecutionService
 from sqlalchemy import text
@@ -41,7 +41,7 @@ class InvestmentAdvisorCLI:
         self.supervisor = investment_advisor_supervisor
         self.session_id = None
         self.client_profile = None
-        self.db_service = DatabaseService()
+        self.db_service = database_service  # Use shared singleton
         self.current_user_id = "usr_348784c4-6f83-4857-b7dc-f5132a38dfee"  # Default user
         
         # Register cleanup on exit

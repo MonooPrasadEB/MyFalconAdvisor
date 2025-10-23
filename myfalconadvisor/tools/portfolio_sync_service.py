@@ -13,7 +13,7 @@ from typing import Dict, List, Optional
 import logging
 from sqlalchemy import text
 
-from .database_service import DatabaseService
+from .database_service import database_service
 from .alpaca_trading_service import alpaca_trading_service
 from ..core.logging_config import get_portfolio_sync_logger
 
@@ -32,7 +32,7 @@ class PortfolioSyncService:
     """
     
     def __init__(self):
-        self.db_service = DatabaseService()
+        self.db_service = database_service  # Use shared singleton
         self.alpaca_service = alpaca_trading_service
         self.is_running = False
         self.sync_thread = None

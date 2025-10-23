@@ -9,28 +9,25 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from myfalconadvisor.tools.database_service import DatabaseService
+from myfalconadvisor.tools.database_service import database_service
 
 
 def check_pool_status():
     """Check current pool status."""
-    db = DatabaseService()
-    status = db.get_pool_status()
+    status = database_service.get_pool_status()
     print(f"Pool Status: {status}")
     return status
 
 
 def cleanup_idle():
     """Close idle connections now."""
-    db = DatabaseService()
-    db.close_idle_connections()
+    database_service.close_idle_connections()
     print("✓ Idle connections closed")
 
 
 def dispose_pool():
     """Dispose entire connection pool."""
-    db = DatabaseService()
-    db.dispose()
+    database_service.dispose()
     print("✓ Connection pool disposed")
 
 

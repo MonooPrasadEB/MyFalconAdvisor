@@ -142,6 +142,134 @@ tail -f /tmp/falcon/daily_sync.log
 # Daily automatic sync runs at 10:00 AM weekdays
 ```
 
+## 🌐 Web Interface
+
+MyFalconAdvisor includes a modern React-based web interface for interactive portfolio management and AI chat.
+
+### Starting the Web Interface
+
+**1. Install Frontend Dependencies:**
+```bash
+npm install
+```
+
+**2. Start the Backend API (Terminal 1):**
+```bash
+python start_web_api.py
+```
+- API will be available at: `http://127.0.0.1:8000`
+- API Documentation: `http://127.0.0.1:8000/docs`
+- Health Check: `http://127.0.0.1:8000/health`
+
+**3. Start the Frontend (Terminal 2):**
+```bash
+npm run dev
+```
+- Frontend will be available at: `http://localhost:5173`
+
+**4. Access the Application:**
+- Open browser to `http://localhost:5173`
+- Login with demo user (auto-populated with real database user)
+- View your portfolio dashboard
+- Chat with AI advisor
+- Analyze portfolio performance
+- Review tax optimization opportunities
+
+### Web Features
+
+**Dashboard:**
+- Real-time portfolio value and holdings
+- Interactive charts and visualizations
+- Asset allocation breakdown
+- Daily performance tracking
+
+**AI Chat:**
+- Natural language portfolio queries
+- AI-powered investment recommendations
+- Compliance-checked advice
+- Educational content suggestions
+
+**Analytics:**
+- Historical performance charts
+- Stock-by-stock analysis
+- Portfolio diversification metrics
+- Risk assessment visualizations
+
+**Tax Optimization:**
+- Tax-loss harvesting opportunities
+- Wash sale rule compliance
+- Alternative investment suggestions
+- Potential tax savings calculator
+
+### API Endpoints
+
+The web API provides the following endpoints:
+
+- `POST /login` - User authentication
+- `POST /signup` - User registration
+- `POST /chat` - AI-powered financial advice (integrates with full backend)
+- `GET /portfolio` - Portfolio data with analysis
+- `GET /analytics` - Performance analytics and charts
+- `POST /execute` - Trade execution
+- `GET /profile` - User profile information
+- `GET /health` - System health check
+
+### Web Architecture
+
+```
+React Frontend (Port 5173)
+    ↓ HTTP Requests
+FastAPI Backend (Port 8000)
+    ↓ Uses Singleton Pattern
+MyFalconAdvisor Backend Services
+    ↓ Connection Pool (15 max)
+PostgreSQL Database
+```
+
+**Key Integration Points:**
+- Web API uses the same `database_service` singleton as CLI
+- Shared connection pool ensures no connection exhaustion
+- All AI agents (Multi-Task, Compliance, Execution) available via API
+- Real portfolio data from database (not mock data)
+
+### Web Development
+
+**Build for Production:**
+```bash
+npm run build
+# Creates optimized production build in dist/
+```
+
+**Linting:**
+```bash
+npm run lint
+# Checks code quality
+```
+
+### Testing Web Integration
+
+**Backend Health Check:**
+```bash
+curl http://127.0.0.1:8000/health
+# Should return: {"status": "healthy", "services": {"database": "connected"}}
+```
+
+**Test Portfolio API:**
+```bash
+curl http://127.0.0.1:8000/portfolio \
+  -H "Authorization: Bearer usr_348784c4-6f83-4857-b7dc-f5132a38dfee"
+# Should return real portfolio data from database
+```
+
+**Test Chat API:**
+```bash
+curl -X POST http://127.0.0.1:8000/chat \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer usr_348784c4-6f83-4857-b7dc-f5132a38dfee" \
+  -d '{"query": "How is my portfolio performing?"}'
+# Should return AI-generated response with real portfolio analysis
+```
+
 ## Architecture
 
 ### 🗄️ Database Design

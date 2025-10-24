@@ -58,6 +58,11 @@ click>=8.1.0
 rich>=13.0.0
 typer>=0.9.0
 
+# Web API Framework
+fastapi>=0.115.0
+uvicorn>=0.34.0
+python-multipart>=0.0.18
+
 # Development and Testing (optional)
 pytest>=7.0.0
 pytest-asyncio>=0.21.0

@@ -875,6 +875,17 @@ IMPORTANT:
 - Use the actual quantities, prices, and allocations from the holdings list
 - Reference the sector information provided for each holding
 
+FORMATTING GUIDELINES:
+- When presenting structured data (sector breakdowns, top holdings, comparisons), use **markdown tables** for clarity
+- Example table format:
+  | Sector | Holdings | Value | Allocation |
+  |--------|----------|-------|------------|
+  | Technology | AAPL, GOOGL | $50,000 | 35% |
+  
+- Use tables for: sector breakdowns, holdings lists, performance comparisons, allocation summaries
+- Use bullet points for: recommendations, action items, general advice
+- Use bold (**text**) to emphasize key figures, percentages, and important holdings
+
 If they want to stay aggressive, support that preference and give advice on how to optimize their aggressive strategy.
 Be conversational, not templated.
 """)

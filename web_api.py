@@ -407,8 +407,9 @@ async def chat(request: ChatRequest, current_user: dict = Depends(get_current_us
         
         # Extract learning suggestions if available
         learning_suggestions = []
-        if "learning_content" in result.get("analysis_results", {}):
-            learning_content = result["analysis_results"]["learning_content"]
+        analysis_results = result.get("analysis_results") or {}
+        if isinstance(analysis_results, dict) and "learning_content" in analysis_results:
+            learning_content = analysis_results["learning_content"]
             if isinstance(learning_content, list):
                 learning_suggestions = [
                     {
@@ -419,14 +420,27 @@ async def chat(request: ChatRequest, current_user: dict = Depends(get_current_us
                     for item in learning_content[:2]  # Limit to 2 suggestions
                 ]
         
+        # Extract suggested actions from trade recommendations
+        suggested_actions = []
+        trade_recs = result.get("trade_recommendations") or []
+        if isinstance(trade_recs, list):
+            for rec in trade_recs:
+                if isinstance(rec, dict):
+                    suggested_actions.append({
+                        "type": rec.get("action", "rebalance"),
+                        "from": rec.get("from_asset", rec.get("symbol", "")),
+                        "to": rec.get("to_asset", ""),
+                        "amount_pct": rec.get("percentage", rec.get("amount", ""))
+                    })
+        
         return {
             "advisor_reply": result.get("response", "I'm processing your request..."),
             "compliance_checked": True,
             "compliance_notes": ["Investment advice is for educational purposes only"],
-            "suggested_actions": [],
+            "suggested_actions": suggested_actions,
             "learning_suggestions": learning_suggestions,
             "analysis_results": result.get("analysis_results"),
-            "trade_recommendations": result.get("trade_recommendations", []),
+            "trade_recommendations": trade_recs,
             "requires_user_approval": result.get("requires_user_approval", False)
         }
         

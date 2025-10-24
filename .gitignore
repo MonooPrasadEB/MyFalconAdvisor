@@ -187,3 +187,9 @@ secrets/
 models/
 outputs/
 artifacts/
+
+# Node.js / Frontend
+node_modules/
+dist/
+.vite/
+*.local

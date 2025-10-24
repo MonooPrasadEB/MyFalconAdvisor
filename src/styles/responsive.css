@@ -1,0 +1,36 @@
+/* Mobile-first responsive design */
+@media (max-width: 768px) {
+  .app-container {
+    padding: 12px !important;
+    max-width: 100% !important;
+  }
+  
+  .header-nav {
+    flex-direction: column !important;
+    gap: 8px !important;
+  }
+  
+  .nav-buttons {
+    width: 100%;
+    padding: 12px !important;
+    font-size: 16px;
+  }
+  
+  .form-grid {
+    grid-template-columns: 1fr !important;
+  }
+  
+  .dashboard-cards {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+@media (max-width: 480px) {
+  .app-container {
+    padding: 8px !important;
+  }
+  
+  h1 {
+    font-size: 1.5rem !important;
+  }
+}

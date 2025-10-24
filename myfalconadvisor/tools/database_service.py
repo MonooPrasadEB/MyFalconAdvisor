@@ -9,6 +9,8 @@ import logging
 from datetime import datetime
 from typing import Dict, List, Optional, Any
 import uuid
+import threading
+import time
 
 from sqlalchemy import create_engine, text, event
 from sqlalchemy.orm import sessionmaker
@@ -30,6 +32,8 @@ class DatabaseService:
         self.config = config
         self.engine = None
         self.SessionLocal = None
+        self._cleanup_thread = None
+        self._cleanup_running = False
         self._initialize_connection()
     
     def _initialize_connection(self):
@@ -52,13 +56,13 @@ class DatabaseService:
             self.engine = create_engine(
                 db_url, 
                 echo=getattr(config, 'db_echo', False),
-                pool_size=5,  # Permanent connections (balanced for concurrent operations)
-                max_overflow=10,  # Allow bursts up to 15 total connections
+                pool_size=3,  # Reduced permanent connections (web, cli, background)
+                max_overflow=7,  # Allow bursts up to 10 total connections
                 pool_timeout=30,  # Timeout for getting connection from pool
-                pool_recycle=1800,  # Recycle connections after 30 minutes
+                pool_recycle=600,  # Recycle connections after 10 minutes (reduced from 30)
                 pool_pre_ping=True,  # Verify connections before using them
                 connect_args={
-                    "options": "-c idle_in_transaction_session_timeout=300000"  # 5 minutes in milliseconds
+                    "options": "-c idle_in_transaction_session_timeout=180000"  # 3 minutes in milliseconds (reduced from 5)
                 }
             )
             self.SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=self.engine)
@@ -118,6 +122,13 @@ class DatabaseService:
         def receive_connect(dbapi_conn, connection_record):
             """Called when a new connection is created."""
             logger.debug("New database connection created")
+            # Set connection-level timeout
+            try:
+                cursor = dbapi_conn.cursor()
+                cursor.execute("SET idle_in_transaction_session_timeout = '180s'")
+                cursor.close()
+            except Exception as e:
+                logger.warning(f"Could not set connection timeout: {e}")
         
         @event.listens_for(Pool, "checkout")
         def receive_checkout(dbapi_conn, connection_record, connection_proxy):
@@ -128,6 +139,17 @@ class DatabaseService:
         def receive_checkin(dbapi_conn, connection_record):
             """Called when a connection is returned to the pool."""
             logger.debug("Connection returned to pool")
+            # Periodically clean up excess connections (every 10th checkin)
+            import random
+            if random.randint(1, 10) == 1:
+                try:
+                    pool = self.engine.pool
+                    # If we have overflow connections, dispose of them
+                    if pool.overflow() > 0:
+                        logger.debug("Disposing overflow connections")
+                        pool.dispose()
+                except Exception as e:
+                    logger.debug(f"Could not dispose overflow: {e}")
     
     def get_pool_status(self):
         """Get current connection pool status."""
@@ -146,6 +168,40 @@ class DatabaseService:
         except Exception as e:
             logger.error(f"Failed to get pool status: {e}")
             return {"error": str(e)}
+    
+    def start_periodic_cleanup(self, interval_seconds: int = 300):
+        """Start a background thread to periodically close idle connections.
+        
+        Args:
+            interval_seconds: Cleanup interval in seconds (default: 5 minutes)
+        """
+        if self._cleanup_running:
+            logger.info("Periodic cleanup already running")
+            return
+        
+        self._cleanup_running = True
+        
+        def cleanup_loop():
+            while self._cleanup_running:
+                try:
+                    time.sleep(interval_seconds)
+                    if self._cleanup_running:  # Check again after sleep
+                        logger.debug("Running periodic idle connection cleanup")
+                        self.close_idle_connections()
+                except Exception as e:
+                    logger.error(f"Error in periodic cleanup: {e}")
+        
+        self._cleanup_thread = threading.Thread(target=cleanup_loop, daemon=True)
+        self._cleanup_thread.start()
+        logger.info(f"Started periodic connection cleanup (every {interval_seconds}s)")
+    
+    def stop_periodic_cleanup(self):
+        """Stop the periodic cleanup thread."""
+        if self._cleanup_running:
+            self._cleanup_running = False
+            if self._cleanup_thread:
+                self._cleanup_thread.join(timeout=5)
+            logger.info("Stopped periodic connection cleanup")
     
     def update_portfolio(self, portfolio_id: str, updates: Dict) -> bool:
         """Update portfolio with new values."""

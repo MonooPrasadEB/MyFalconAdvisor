@@ -64,6 +64,20 @@ security = HTTPBearer()
 config = Config.get_instance()
 # Using shared database_service singleton (imported above)
 
+# Startup event to start periodic connection cleanup
+@app.on_event("startup")
+async def startup_event():
+    """Start background tasks on application startup."""
+    logger.info("Starting periodic database connection cleanup")
+    database_service.start_periodic_cleanup(interval_seconds=300)  # Every 5 minutes
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Clean up on application shutdown."""
+    logger.info("Stopping periodic database connection cleanup")
+    database_service.stop_periodic_cleanup()
+    database_service.dispose()
+
 # Pydantic models for API
 class ChatRequest(BaseModel):
     query: str = Field(..., description="User's investment question or request")

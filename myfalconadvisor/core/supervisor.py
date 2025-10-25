@@ -293,9 +293,8 @@ Respond with ONLY a JSON object:
         # Create context for portfolio analysis
         analysis_prompt = self._create_portfolio_analysis_prompt(state)
         
-        # Get response from multi-task agent
-        # In a real implementation, this would call the LangGraph agent
-        response_content = self._simulate_portfolio_analysis(
+        # Get response from multi-task agent using LLM
+        response_content = self._conversational_analysis_node(
             last_message.content if last_message else "Analyze portfolio",
             state.get("portfolio_data", {}),
             state.get("client_profile", {})
@@ -806,7 +805,7 @@ Format your response as a clear, professional trade execution analysis.
             None, self.process_client_request, request, client_profile, portfolio_data, session_id
         )
     
-    # Helper methods for simulation (replace with actual agent calls in production)
+    # Helper methods for LLM-based conversational analysis
     
     def _create_portfolio_analysis_prompt(self, state: InvestmentAdvisorState) -> str:
         """Create context-aware prompt for portfolio analysis."""
@@ -821,7 +820,7 @@ Format your response as a clear, professional trade execution analysis.
         Please provide comprehensive portfolio analysis including risk assessment and recommendations.
         """
     
-    def _simulate_portfolio_analysis(self, request: str, portfolio_data: Dict, client_profile: Dict) -> str:
+    def _conversational_analysis_node(self, request: str, portfolio_data: Dict, client_profile: Dict) -> str:
         """Generate dynamic conversational responses using LLM based on user's specific question."""
         try:
             # Extract portfolio metrics for context
@@ -920,42 +919,6 @@ Be conversational, not templated.
             return f"""I apologize, but I encountered an error while processing your question: "{request}". 
 
 Could you please try rephrasing your question? I'm here to help with any questions about your portfolio, investment strategy, or market insights."""
-    
-    def _simulate_trade_execution(self, request: str, portfolio_data: Dict, client_profile: Dict) -> str:
-        """Simulate trade execution response."""
-        return f"""
-## Trade Execution Analysis
-
-Based on your request: "{request}"
-
-**Proposed Trades for Rebalancing:**
-
-1. **SELL: AAPL** - 50 shares at $193.50
-   - Reduce from 15% to 12% allocation  
-   - Estimated proceeds: $9,675
-
-2. **BUY: BND** - 150 shares at $72.15
-   - Add bond allocation from 15% to 20%
-   - Estimated cost: $10,823
-
-**Trade Summary:**
-- Net cash needed: $1,148
-- Commission costs: $1.30 total
-- Expected execution: Within market hours
-
-**Compliance Status:** ✅ Pre-approved
-- Position size limits: Compliant
-- Suitability requirements: Met
-- Risk tolerance: Aligned
-
-**Next Steps:**
-These trades require your explicit approval before execution. Would you like to:
-1. Approve these trades as proposed
-2. Modify the trade sizes or timing
-3. Review additional details first
-
-*Note: Orders will be executed as market orders during regular trading hours once approved.*
-"""
     
     def _execute_real_compliance_review(
         self,
@@ -1062,32 +1025,6 @@ Reply with "Approve" to execute this trade, or ask questions for clarification.
         except Exception as e:
             logger.error(f"Error in real compliance review: {e}")
             return f"Compliance review encountered an error. Please try again or contact support."
-    
-    def _simulate_compliance_review(self, trade_recs: List[Dict], client_profile: Dict, context: str) -> str:
-        """Simulate compliance review response (DEPRECATED - use _execute_real_compliance_review)."""
-        return f"""
-## Compliance Review Complete ✅
-
-**Trade Recommendations Reviewed:**
-- {len(trade_recs)} trade(s) analyzed for regulatory compliance
-- Client suitability assessment: PASSED
-- Risk tolerance alignment: CONFIRMED
-
-**Regulatory Compliance:**
-- SEC Investment Advisers Act: Compliant
-- FINRA Suitability Rule 2111: Met
-- Best Interest Standard (Reg BI): Satisfied
-
-**Required Disclosures:**
-• All investments involve risk, including potential loss of principal
-• Past performance does not guarantee future results
-• Rebalancing may have tax implications for taxable accounts
-
-**Client Communication Approved:**
-The proposed trades and communication have been reviewed and approved for client presentation. All regulatory requirements have been met.
-
-**Recommendation:** Proceed with client approval process for trade execution.
-"""
     
     def _create_final_communication(self, state: InvestmentAdvisorState) -> str:
         """Create final client communication."""

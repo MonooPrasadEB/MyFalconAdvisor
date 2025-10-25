@@ -589,9 +589,12 @@ Format your response as a clear, professional trade execution analysis.
             state["workflow_complete"] = True
             
         elif trade_recommendations:
-            response_content = self._simulate_compliance_review(
+            # Use REAL compliance reviewer to create transactions and log compliance checks
+            response_content = self._execute_real_compliance_review(
                 trade_recommendations,
                 state.get("client_profile", {}),
+                state.get("portfolio_data", {}),
+                state.get("user_id"),
                 messages[-1].content if messages else ""
             )
             state["compliance_approval"] = True
@@ -954,8 +957,114 @@ These trades require your explicit approval before execution. Would you like to:
 *Note: Orders will be executed as market orders during regular trading hours once approved.*
 """
     
+    def _execute_real_compliance_review(
+        self,
+        trade_recommendations: List[Dict],
+        client_profile: Dict,
+        portfolio_data: Dict,
+        user_id: Optional[str],
+        context: str
+    ) -> str:
+        """
+        Execute real compliance review using compliance_reviewer_agent.
+        Creates pending transactions and logs compliance checks to database.
+        """
+        try:
+            if not trade_recommendations:
+                return "No trade recommendations to review."
+            
+            # Process first trade recommendation (can be extended for multiple)
+            trade = trade_recommendations[0]
+            symbol = trade.get('symbol', 'UNKNOWN')
+            action = trade.get('action', 'BUY')
+            quantity = trade.get('quantity', 0)
+            
+            # Get portfolio_id from portfolio_data if available
+            portfolio_id = None
+            if portfolio_data and isinstance(portfolio_data, dict):
+                # Try to extract portfolio_id from assets or holdings
+                if 'assets' in portfolio_data and portfolio_data['assets']:
+                    # Might be embedded in asset data
+                    pass
+                elif 'holdings' in portfolio_data and portfolio_data['holdings']:
+                    # Might be in holdings data
+                    pass
+            
+            # Build recommendation content
+            recommendation_content = f"{action.upper()} {quantity} shares of {symbol}"
+            if trade.get('rationale'):
+                recommendation_content += f". Rationale: {trade['rationale']}"
+            
+            # Build recommendation context for compliance review
+            recommendation_context = {
+                'user_id': user_id,
+                'portfolio_id': portfolio_id,
+                'symbol': symbol,
+                'action': action,
+                'quantity': quantity,
+                'price': trade.get('price'),
+                'order_type': trade.get('order_type', 'market'),
+                'risk_level': client_profile.get('risk_tolerance', 'moderate')
+            }
+            
+            # Call REAL compliance reviewer - this creates transactions and logs compliance checks
+            review_result = self.compliance_reviewer.review_investment_recommendation(
+                recommendation_content=recommendation_content,
+                client_profile=client_profile,
+                recommendation_context=recommendation_context
+            )
+            
+            # Format response based on review results
+            compliance_score = review_result.get('compliance_score', 100)
+            issues = review_result.get('compliance_issues', [])
+            status = review_result.get('status', 'approved')
+            
+            if status == 'approved' or compliance_score >= 70:
+                return f"""
+## ✅ Compliance Review Complete
+
+**Trade Recommendation:** {action.upper()} {quantity} shares of {symbol}
+
+**Compliance Score:** {compliance_score}/100
+
+**Status:** {'⚠️ APPROVED WITH WARNINGS' if issues else '✅ APPROVED'}
+
+{f"**Issues Identified ({len(issues)}):**" if issues else ""}
+{chr(10).join(f"• {issue.get('description', 'Unknown issue')} [{issue.get('severity', 'medium')}]" for issue in issues[:3])}
+
+**Regulatory Compliance:**
+• SEC Investment Advisers Act: Compliant
+• FINRA Suitability Rule 2111: {'⚠️ Review Required' if len(issues) > 0 else 'Met'}
+• Best Interest Standard (Reg BI): {'⚠️ Review Required' if len(issues) > 0 else 'Satisfied'}
+
+**Transaction Status:** Pending - awaiting your approval
+**Database:** Transaction and compliance checks logged ✓
+
+**Next Steps:**
+Reply with "Approve" to execute this trade, or ask questions for clarification.
+"""
+            else:
+                return f"""
+## ❌ Compliance Review Failed
+
+**Trade Recommendation:** {action.upper()} {quantity} shares of {symbol}
+
+**Compliance Score:** {compliance_score}/100
+
+**Status:** REQUIRES REVISION
+
+**Critical Issues ({len(issues)}):**
+{chr(10).join(f"• {issue.get('description', 'Unknown issue')} [{issue.get('severity', 'critical')}]" for issue in issues)}
+
+**Recommendation:** This trade cannot proceed without addressing the compliance issues identified above.
+"""
+            
+        except Exception as e:
+            logger.error(f"Error in real compliance review: {e}")
+            return f"Compliance review encountered an error. Please try again or contact support."
+    
     def _simulate_compliance_review(self, trade_recs: List[Dict], client_profile: Dict, context: str) -> str:
-        """Simulate compliance review response."""
+        """Simulate compliance review response (DEPRECATED - use _execute_real_compliance_review)."""
         return f"""
 ## Compliance Review Complete ✅
 

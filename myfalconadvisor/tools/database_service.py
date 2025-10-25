@@ -541,6 +541,113 @@ class DatabaseService:
         except SQLAlchemyError as e:
             logger.error(f"Failed to get recent transactions: {e}")
             return []
+    
+    def insert_compliance_check(
+        self,
+        user_id: Optional[str] = None,
+        portfolio_id: Optional[str] = None,
+        transaction_id: Optional[str] = None,
+        recommendation_id: Optional[str] = None,
+        check_type: str = "regulatory",
+        rule_name: str = "",
+        rule_description: str = "",
+        check_result: str = "pass",
+        violation_details: Optional[Dict] = None,
+        severity: str = "low"
+    ) -> bool:
+        """
+        Insert compliance check record into compliance_checks table.
+        
+        Args:
+            user_id: User ID being checked
+            portfolio_id: Portfolio reference
+            transaction_id: Related transaction
+            recommendation_id: Related recommendation
+            check_type: Type of check (suitability, concentration, liquidity, regulatory, risk_limit)
+            rule_name: Name of the compliance rule
+            rule_description: Description of the rule
+            check_result: Result (pass, fail, warning)
+            violation_details: JSON details of violations
+            severity: Severity (low, medium, high, critical)
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        if not self.engine:
+            logger.warning("Database not available - mock compliance check insert")
+            return True
+        
+        try:
+            check_id = str(uuid.uuid4())
+            
+            # Convert recommendation_id to UUID if it's a string
+            if recommendation_id and not isinstance(recommendation_id, uuid.UUID):
+                try:
+                    # Try to parse as UUID
+                    recommendation_id = str(uuid.UUID(recommendation_id))
+                except (ValueError, AttributeError):
+                    # If not a valid UUID, create a deterministic UUID from the string
+                    recommendation_id = str(uuid.uuid5(uuid.NAMESPACE_DNS, recommendation_id))
+            elif recommendation_id:
+                recommendation_id = str(recommendation_id)
+            
+            # Convert other UUID fields similarly
+            if portfolio_id and not isinstance(portfolio_id, uuid.UUID):
+                try:
+                    portfolio_id = str(uuid.UUID(portfolio_id))
+                except (ValueError, AttributeError):
+                    portfolio_id = str(uuid.uuid5(uuid.NAMESPACE_DNS, portfolio_id))
+            elif portfolio_id:
+                portfolio_id = str(portfolio_id)
+            
+            if transaction_id and not isinstance(transaction_id, uuid.UUID):
+                try:
+                    transaction_id = str(uuid.UUID(transaction_id))
+                except (ValueError, AttributeError):
+                    transaction_id = str(uuid.uuid5(uuid.NAMESPACE_DNS, transaction_id))
+            elif transaction_id:
+                transaction_id = str(transaction_id)
+            
+            with self.engine.connect() as conn:
+                query = """
+                INSERT INTO compliance_checks (
+                    check_id, user_id, portfolio_id, transaction_id, recommendation_id,
+                    check_type, rule_name, rule_description, check_result, 
+                    violation_details, severity, checked_at
+                ) VALUES (
+                    :check_id, :user_id, :portfolio_id, :transaction_id, :recommendation_id,
+                    :check_type, :rule_name, :rule_description, :check_result,
+                    :violation_details, :severity, CURRENT_TIMESTAMP
+                )
+                """
+                
+                # Convert violation_details dict to JSON string if provided
+                import json
+                violation_json = json.dumps(violation_details) if violation_details else None
+                
+                params = {
+                    "check_id": check_id,
+                    "user_id": user_id,
+                    "portfolio_id": portfolio_id,
+                    "transaction_id": transaction_id,
+                    "recommendation_id": recommendation_id,
+                    "check_type": check_type,
+                    "rule_name": rule_name,
+                    "rule_description": rule_description,
+                    "check_result": check_result,
+                    "violation_details": violation_json,
+                    "severity": severity
+                }
+                
+                conn.execute(text(query), params)
+                conn.commit()
+                
+                logger.info(f"Compliance check logged: {rule_name} - {check_result}")
+                return True
+                
+        except SQLAlchemyError as e:
+            logger.error(f"Failed to insert compliance check: {e}")
+            return False
 
 
 # Create service instance

@@ -648,6 +648,86 @@ class DatabaseService:
         except SQLAlchemyError as e:
             logger.error(f"Failed to insert compliance check: {e}")
             return False
+    
+    def create_pending_transaction(
+        self,
+        user_id: str,
+        symbol: str,
+        transaction_type: str,
+        quantity: float,
+        price: Optional[float] = None,
+        portfolio_id: Optional[str] = None,
+        order_type: str = "market",
+        notes: Optional[str] = None
+    ) -> Optional[str]:
+        """
+        Create a pending transaction record for compliance review.
+        
+        Args:
+            user_id: User ID
+            symbol: Stock symbol
+            transaction_type: BUY, SELL, DIVIDEND, SPLIT, TRANSFER
+            quantity: Number of shares
+            price: Price per share (optional for market orders)
+            portfolio_id: Portfolio reference
+            order_type: market, limit, stop, etc.
+            notes: Additional notes
+            
+        Returns:
+            transaction_id if successful, None otherwise
+        """
+        if not self.engine:
+            logger.warning("Database not available - mock transaction creation")
+            return str(uuid.uuid4())
+        
+        try:
+            transaction_id = str(uuid.uuid4())
+            
+            # Validate/convert portfolio_id to UUID if provided
+            if portfolio_id and not isinstance(portfolio_id, uuid.UUID):
+                try:
+                    portfolio_id = str(uuid.UUID(portfolio_id))
+                except (ValueError, AttributeError):
+                    portfolio_id = str(uuid.uuid5(uuid.NAMESPACE_DNS, portfolio_id))
+            elif portfolio_id:
+                portfolio_id = str(portfolio_id)
+            
+            # Calculate total_amount if price is provided
+            total_amount = (price * quantity) if price else None
+            
+            with self.engine.connect() as conn:
+                query = """
+                INSERT INTO transactions (
+                    transaction_id, portfolio_id, user_id, symbol, transaction_type,
+                    quantity, price, total_amount, order_type, status, notes, created_at
+                ) VALUES (
+                    :transaction_id, :portfolio_id, :user_id, :symbol, :transaction_type,
+                    :quantity, :price, :total_amount, :order_type, 'pending', :notes, CURRENT_TIMESTAMP
+                )
+                """
+                
+                params = {
+                    "transaction_id": transaction_id,
+                    "portfolio_id": portfolio_id,
+                    "user_id": user_id,
+                    "symbol": symbol,
+                    "transaction_type": transaction_type.upper(),
+                    "quantity": quantity,
+                    "price": price,
+                    "total_amount": total_amount,
+                    "order_type": order_type,
+                    "notes": notes or f"Pending compliance review for {transaction_type} {quantity} {symbol}"
+                }
+                
+                conn.execute(text(query), params)
+                conn.commit()
+                
+                logger.info(f"Created pending transaction: {transaction_id} - {transaction_type} {quantity} {symbol}")
+                return transaction_id
+                
+        except SQLAlchemyError as e:
+            logger.error(f"Failed to create pending transaction: {e}")
+            return None
 
 
 # Create service instance

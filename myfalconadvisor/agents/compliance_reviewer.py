@@ -370,6 +370,23 @@ Remember: Your primary responsibility is ensuring regulatory compliance while ma
             portfolio_id = recommendation_context.get('portfolio_id')
             recommendation_id = recommendation_context.get('recommendation_id', review_id)
             
+            # Create pending transaction if this is a trade recommendation
+            transaction_id = recommendation_context.get('transaction_id')
+            if not transaction_id and recommendation_context.get('symbol') and recommendation_context.get('action'):
+                # Create pending transaction for compliance tracking
+                transaction_id = database_service.create_pending_transaction(
+                    user_id=user_id or 'unknown',
+                    symbol=recommendation_context.get('symbol'),
+                    transaction_type=recommendation_context.get('action', 'BUY'),
+                    quantity=recommendation_context.get('quantity', 0),
+                    price=recommendation_context.get('price'),
+                    portfolio_id=portfolio_id,
+                    order_type=recommendation_context.get('order_type', 'market'),
+                    notes=f"AI recommendation pending compliance review"
+                )
+                if transaction_id:
+                    logger.info(f"Created pending transaction {transaction_id} for compliance review")
+            
             # Map compliance issue categories to valid check_types
             # Valid check_types: suitability, concentration, liquidity, regulatory, risk_limit
             category_to_check_type = {
@@ -398,6 +415,7 @@ Remember: Your primary responsibility is ensuring regulatory compliance while ma
                 database_service.insert_compliance_check(
                     user_id=user_id,
                     portfolio_id=portfolio_id,
+                    transaction_id=transaction_id,
                     recommendation_id=recommendation_id,
                     check_type=check_type,
                     rule_name=issue.issue_id,
@@ -418,6 +436,7 @@ Remember: Your primary responsibility is ensuring regulatory compliance while ma
             database_service.insert_compliance_check(
                 user_id=user_id,
                 portfolio_id=portfolio_id,
+                transaction_id=transaction_id,
                 recommendation_id=recommendation_id,
                 check_type="regulatory",  # Use 'regulatory' as the overall check type
                 rule_name="Comprehensive Review",
@@ -427,7 +446,8 @@ Remember: Your primary responsibility is ensuring regulatory compliance while ma
                     "review_type": "comprehensive",
                     "issues_count": len(compliance_issues),
                     "compliance_score": enhanced_check.get('compliance_score') if enhanced_check else self._calculate_compliance_score(compliance_issues),
-                    "suitability_passed": suitability_check.get('suitable', True)
+                    "suitability_passed": suitability_check.get('suitable', True),
+                    "transaction_id": transaction_id
                 },
                 severity="low" if overall_result == "pass" else "high"
             )

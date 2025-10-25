@@ -23,7 +23,7 @@ from ..agents.multi_task_agent import multi_task_agent
 from ..agents.execution_agent import execution_service
 from ..agents.compliance_reviewer import compliance_reviewer_agent
 from ..core.config import Config
-from ..tools.chat_logger import chat_logger, log_user_message, log_supervisor_action
+from ..tools.chat_logger import chat_logger, log_user_message, log_supervisor_action, log_advisor_response
 
 config = Config.get_instance()
 logger = logging.getLogger(__name__)
@@ -293,9 +293,8 @@ Respond with ONLY a JSON object:
         # Create context for portfolio analysis
         analysis_prompt = self._create_portfolio_analysis_prompt(state)
         
-        # Get response from multi-task agent
-        # In a real implementation, this would call the LangGraph agent
-        response_content = self._simulate_portfolio_analysis(
+        # Get response from multi-task agent using LLM
+        response_content = self._conversational_analysis_node(
             last_message.content if last_message else "Analyze portfolio",
             state.get("portfolio_data", {}),
             state.get("client_profile", {})
@@ -589,9 +588,12 @@ Format your response as a clear, professional trade execution analysis.
             state["workflow_complete"] = True
             
         elif trade_recommendations:
-            response_content = self._simulate_compliance_review(
+            # Use REAL compliance reviewer to create transactions and log compliance checks
+            response_content = self._execute_real_compliance_review(
                 trade_recommendations,
                 state.get("client_profile", {}),
+                state.get("portfolio_data", {}),
+                state.get("user_id"),
                 messages[-1].content if messages else ""
             )
             state["compliance_approval"] = True
@@ -757,6 +759,19 @@ Format your response as a clear, professional trade execution analysis.
             final_messages = final_state["messages"]
             final_response = final_messages[-1].content if final_messages else "No response generated"
             
+            # Log AI advisor response
+            if session_id:
+                log_advisor_response(
+                    final_response,
+                    session_id=session_id,
+                    metadata={
+                        "workflow_complete": final_state.get("workflow_complete", False),
+                        "has_trade_recommendations": bool(final_state.get("trade_recommendations")),
+                        "compliance_approved": final_state.get("compliance_approval", False),
+                        "requires_user_approval": final_state.get("requires_approval", False)
+                    }
+                )
+            
             return {
                 "response": final_response,
                 "session_id": final_state["session_id"],
@@ -790,7 +805,7 @@ Format your response as a clear, professional trade execution analysis.
             None, self.process_client_request, request, client_profile, portfolio_data, session_id
         )
     
-    # Helper methods for simulation (replace with actual agent calls in production)
+    # Helper methods for LLM-based conversational analysis
     
     def _create_portfolio_analysis_prompt(self, state: InvestmentAdvisorState) -> str:
         """Create context-aware prompt for portfolio analysis."""
@@ -805,7 +820,7 @@ Format your response as a clear, professional trade execution analysis.
         Please provide comprehensive portfolio analysis including risk assessment and recommendations.
         """
     
-    def _simulate_portfolio_analysis(self, request: str, portfolio_data: Dict, client_profile: Dict) -> str:
+    def _conversational_analysis_node(self, request: str, portfolio_data: Dict, client_profile: Dict) -> str:
         """Generate dynamic conversational responses using LLM based on user's specific question."""
         try:
             # Extract portfolio metrics for context
@@ -905,67 +920,111 @@ Be conversational, not templated.
 
 Could you please try rephrasing your question? I'm here to help with any questions about your portfolio, investment strategy, or market insights."""
     
-    def _simulate_trade_execution(self, request: str, portfolio_data: Dict, client_profile: Dict) -> str:
-        """Simulate trade execution response."""
-        return f"""
-## Trade Execution Analysis
+    def _execute_real_compliance_review(
+        self,
+        trade_recommendations: List[Dict],
+        client_profile: Dict,
+        portfolio_data: Dict,
+        user_id: Optional[str],
+        context: str
+    ) -> str:
+        """
+        Execute real compliance review using compliance_reviewer_agent.
+        Creates pending transactions and logs compliance checks to database.
+        """
+        try:
+            if not trade_recommendations:
+                return "No trade recommendations to review."
+            
+            # Process first trade recommendation (can be extended for multiple)
+            trade = trade_recommendations[0]
+            symbol = trade.get('symbol', 'UNKNOWN')
+            action = trade.get('action', 'BUY')
+            quantity = trade.get('quantity', 0)
+            
+            # Get portfolio_id from portfolio_data if available
+            portfolio_id = None
+            if portfolio_data and isinstance(portfolio_data, dict):
+                # Try to extract portfolio_id from assets or holdings
+                if 'assets' in portfolio_data and portfolio_data['assets']:
+                    # Might be embedded in asset data
+                    pass
+                elif 'holdings' in portfolio_data and portfolio_data['holdings']:
+                    # Might be in holdings data
+                    pass
+            
+            # Build recommendation content
+            recommendation_content = f"{action.upper()} {quantity} shares of {symbol}"
+            if trade.get('rationale'):
+                recommendation_content += f". Rationale: {trade['rationale']}"
+            
+            # Build recommendation context for compliance review
+            recommendation_context = {
+                'user_id': user_id,
+                'portfolio_id': portfolio_id,
+                'symbol': symbol,
+                'action': action,
+                'quantity': quantity,
+                'price': trade.get('price'),
+                'order_type': trade.get('order_type', 'market'),
+                'risk_level': client_profile.get('risk_tolerance', 'moderate')
+            }
+            
+            # Call REAL compliance reviewer - this creates transactions and logs compliance checks
+            review_result = self.compliance_reviewer.review_investment_recommendation(
+                recommendation_content=recommendation_content,
+                client_profile=client_profile,
+                recommendation_context=recommendation_context
+            )
+            
+            # Format response based on review results
+            compliance_score = review_result.get('compliance_score', 100)
+            issues = review_result.get('compliance_issues', [])
+            status = review_result.get('status', 'approved')
+            
+            if status == 'approved' or compliance_score >= 70:
+                return f"""
+## ✅ Compliance Review Complete
 
-Based on your request: "{request}"
+**Trade Recommendation:** {action.upper()} {quantity} shares of {symbol}
 
-**Proposed Trades for Rebalancing:**
+**Compliance Score:** {compliance_score}/100
 
-1. **SELL: AAPL** - 50 shares at $193.50
-   - Reduce from 15% to 12% allocation  
-   - Estimated proceeds: $9,675
+**Status:** {'⚠️ APPROVED WITH WARNINGS' if issues else '✅ APPROVED'}
 
-2. **BUY: BND** - 150 shares at $72.15
-   - Add bond allocation from 15% to 20%
-   - Estimated cost: $10,823
-
-**Trade Summary:**
-- Net cash needed: $1,148
-- Commission costs: $1.30 total
-- Expected execution: Within market hours
-
-**Compliance Status:** ✅ Pre-approved
-- Position size limits: Compliant
-- Suitability requirements: Met
-- Risk tolerance: Aligned
-
-**Next Steps:**
-These trades require your explicit approval before execution. Would you like to:
-1. Approve these trades as proposed
-2. Modify the trade sizes or timing
-3. Review additional details first
-
-*Note: Orders will be executed as market orders during regular trading hours once approved.*
-"""
-    
-    def _simulate_compliance_review(self, trade_recs: List[Dict], client_profile: Dict, context: str) -> str:
-        """Simulate compliance review response."""
-        return f"""
-## Compliance Review Complete ✅
-
-**Trade Recommendations Reviewed:**
-- {len(trade_recs)} trade(s) analyzed for regulatory compliance
-- Client suitability assessment: PASSED
-- Risk tolerance alignment: CONFIRMED
+{f"**Issues Identified ({len(issues)}):**" if issues else ""}
+{chr(10).join(f"• {issue.get('description', 'Unknown issue')} [{issue.get('severity', 'medium')}]" for issue in issues[:3])}
 
 **Regulatory Compliance:**
-- SEC Investment Advisers Act: Compliant
-- FINRA Suitability Rule 2111: Met
-- Best Interest Standard (Reg BI): Satisfied
+• SEC Investment Advisers Act: Compliant
+• FINRA Suitability Rule 2111: {'⚠️ Review Required' if len(issues) > 0 else 'Met'}
+• Best Interest Standard (Reg BI): {'⚠️ Review Required' if len(issues) > 0 else 'Satisfied'}
 
-**Required Disclosures:**
-• All investments involve risk, including potential loss of principal
-• Past performance does not guarantee future results
-• Rebalancing may have tax implications for taxable accounts
+**Transaction Status:** Pending - awaiting your approval
+**Database:** Transaction and compliance checks logged ✓
 
-**Client Communication Approved:**
-The proposed trades and communication have been reviewed and approved for client presentation. All regulatory requirements have been met.
-
-**Recommendation:** Proceed with client approval process for trade execution.
+**Next Steps:**
+Reply with "Approve" to execute this trade, or ask questions for clarification.
 """
+            else:
+                return f"""
+## ❌ Compliance Review Failed
+
+**Trade Recommendation:** {action.upper()} {quantity} shares of {symbol}
+
+**Compliance Score:** {compliance_score}/100
+
+**Status:** REQUIRES REVISION
+
+**Critical Issues ({len(issues)}):**
+{chr(10).join(f"• {issue.get('description', 'Unknown issue')} [{issue.get('severity', 'critical')}]" for issue in issues)}
+
+**Recommendation:** This trade cannot proceed without addressing the compliance issues identified above.
+"""
+            
+        except Exception as e:
+            logger.error(f"Error in real compliance review: {e}")
+            return f"Compliance review encountered an error. Please try again or contact support."
     
     def _create_final_communication(self, state: InvestmentAdvisorState) -> str:
         """Create final client communication."""

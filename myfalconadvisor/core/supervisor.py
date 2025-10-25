@@ -23,7 +23,7 @@ from ..agents.multi_task_agent import multi_task_agent
 from ..agents.execution_agent import execution_service
 from ..agents.compliance_reviewer import compliance_reviewer_agent
 from ..core.config import Config
-from ..tools.chat_logger import chat_logger, log_user_message, log_supervisor_action
+from ..tools.chat_logger import chat_logger, log_user_message, log_supervisor_action, log_advisor_response
 
 config = Config.get_instance()
 logger = logging.getLogger(__name__)
@@ -756,6 +756,19 @@ Format your response as a clear, professional trade execution analysis.
             # Extract final response
             final_messages = final_state["messages"]
             final_response = final_messages[-1].content if final_messages else "No response generated"
+            
+            # Log AI advisor response
+            if session_id:
+                log_advisor_response(
+                    final_response,
+                    session_id=session_id,
+                    metadata={
+                        "workflow_complete": final_state.get("workflow_complete", False),
+                        "has_trade_recommendations": bool(final_state.get("trade_recommendations")),
+                        "compliance_approved": final_state.get("compliance_approval", False),
+                        "requires_user_approval": final_state.get("requires_approval", False)
+                    }
+                )
             
             return {
                 "response": final_response,

@@ -406,6 +406,12 @@ Return ONLY the JSON object or null:
                     trade_details = json.loads(json_match.group())
                     # Validate required fields
                     if all(key in trade_details for key in ["symbol", "action", "quantity"]):
+                        # Check if quantity is "all" or similar non-numeric string
+                        qty = trade_details.get('quantity', 0)
+                        if isinstance(qty, str) and qty.lower() in ['all', 'entire', 'everything']:
+                            # Mark as needs calculation - will be handled by calling function
+                            trade_details['quantity_special'] = 'all'
+                            trade_details['quantity'] = None  # Will need to be calculated from portfolio
                         return trade_details
                 except json.JSONDecodeError:
                     pass
@@ -942,6 +948,29 @@ Could you please try rephrasing your question? I'm here to help with any questio
             action = trade.get('action', 'BUY')
             quantity = trade.get('quantity', 0)
             
+            # Handle "all" or "entire" quantities - must calculate actual share count
+            if quantity is None or (isinstance(quantity, str) and quantity.lower() in ['all', 'entire', 'everything']):
+                # Look up actual shares in portfolio
+                current_quantity = 0
+                if portfolio_data and isinstance(portfolio_data, dict):
+                    if 'holdings' in portfolio_data:
+                        for holding in portfolio_data['holdings']:
+                            if holding.get('symbol', '').upper() == symbol.upper():
+                                current_quantity = holding.get('quantity', 0)
+                                break
+                    elif 'assets' in portfolio_data:
+                        for asset in portfolio_data['assets']:
+                            if asset.get('symbol', '').upper() == symbol.upper():
+                                current_quantity = asset.get('quantity', 0)
+                                break
+                
+                if current_quantity > 0:
+                    quantity = current_quantity
+                    logger.info(f"Calculated 'all' quantity for {symbol}: {quantity} shares")
+                else:
+                    logger.warning(f"Cannot calculate 'all' quantity - {symbol} not found in portfolio")
+                    return f"Cannot process 'sell all {symbol}' - {symbol} not found in your portfolio. Current holdings might not include this symbol."
+            
             # Get portfolio_id from portfolio_data if available
             portfolio_id = None
             if portfolio_data and isinstance(portfolio_data, dict):
@@ -957,6 +986,77 @@ Could you please try rephrasing your question? I'm here to help with any questio
             risk_tolerance = client_profile.get('risk_tolerance', 'moderate')
             portfolio_value = portfolio_data.get('total_value', 0)
             
+            # Get current price and existing position from portfolio_data
+            current_price = trade.get('price', 0)
+            existing_quantity = 0
+            existing_value = 0
+            
+            if portfolio_data:
+                # Check both 'assets' and 'holdings' keys
+                items = []
+                if 'assets' in portfolio_data:
+                    items = portfolio_data['assets']
+                elif 'holdings' in portfolio_data:
+                    items = portfolio_data['holdings']
+                
+                for item in items:
+                    if item.get('symbol', '').upper() == symbol.upper():
+                        if not current_price:
+                            current_price = item.get('current_price', 0)
+                        existing_quantity = item.get('quantity', 0)
+                        existing_value = item.get('market_value', item.get('value', 0))
+                        break
+            
+            # Calculate trade value and NEW total position value
+            if action.upper() == 'SELL':
+                trade_value = existing_value if existing_value > 0 else (quantity * current_price)
+                # For sells, new position = existing - sold = less than before
+                new_position_value = existing_value - trade_value if existing_value > 0 else 0
+            else:
+                # For BUY: calculate new trade value
+                new_trade_value = quantity * current_price if current_price > 0 else 0
+                # Total position after buy = existing + new purchase
+                new_position_value = existing_value + new_trade_value
+                trade_value = new_trade_value
+            
+            portfolio_pct = (trade_value / portfolio_value * 100) if portfolio_value > 0 else 0
+            new_position_pct = (new_position_value / portfolio_value * 100) if portfolio_value > 0 else 0
+            
+            logger.info(f"Trade concentration check: {symbol} x {quantity} @ ${current_price if current_price else 'N/A'} = ${trade_value:,.2f} ({portfolio_pct:.1f}% of portfolio). After trade: {new_position_pct:.1f}% total position")
+            
+            # Severe concentration warning for large percentage trades
+            # Check if NEW total position would be >50%, or if selling entire position
+            if new_position_pct > 50 or (action.upper() == 'SELL' and existing_quantity == quantity):
+                # Selling all of a position is ALWAYS risky for diversification
+                return f"""
+## ⚠️ **EXTREME CONCENTRATION RISK DETECTED**
+
+This trade would create a concentrated position of **{new_position_pct:.1f}% in {symbol}** (${new_position_value:,.2f} out of ${portfolio_value:,.2f} total portfolio value).
+
+**Why This Is Dangerous:**
+• Having over 50% in a single stock violates diversification principles
+• Individual stocks can drop 20-50% in a single day  
+• This does NOT align with your **moderate risk tolerance**
+• Regulators flag any single position >50% as highly unsuitable
+• SEC/FINRA would flag this as inappropriate for moderate-risk investors
+
+**What This Means:**
+• After this trade, your {symbol} position would be {new_position_pct:.1f}% of your entire portfolio
+• This represents extreme concentration risk
+• Severe lack of diversification violates suitability standards
+• Does not meet fiduciary "best interest" standards
+
+**My Strong Recommendation:**
+I **cannot recommend** this trade given your risk profile. If you truly want to invest in {symbol}:
+1. Start with a smaller position (5-15% of portfolio)
+2. Maintain diversification across multiple sectors/stocks
+3. Consider dollar-cost averaging over time
+4. Reassess your risk tolerance if this type of concentration appeals to you
+
+**Alternative:**
+Would you like me to suggest a more suitable, diversified approach that aligns with your goals and risk tolerance?
+"""
+            
             # Build comprehensive recommendation with suitability and risk disclosures
             recommendation_content = f"""
 Investment Recommendation: {action.upper()} {quantity} shares of {symbol}
@@ -971,7 +1071,7 @@ TRADE DETAILS:
 - Action: {action.upper()} {quantity} shares of {symbol}
 - Order Type: {trade.get('order_type', 'market').upper()}
 - Purpose: {'Raising cash / reducing position' if action.lower() == 'sell' else 'Deploying capital / building position'}
-- Estimated Value Impact: ${(quantity * trade.get('price', 0)):.2f} if trade.get('price') else 'Market price at execution'
+- Estimated Value Impact: {'${:.2f}'.format(quantity * trade.get('price', 0)) if trade.get('price') else 'Market price at execution'}
 
 This recommendation has been prepared in accordance with SEC Investment Advisers Act and FINRA suitability requirements.
 """.strip()
@@ -1000,6 +1100,8 @@ This recommendation has been prepared in accordance with SEC Investment Advisers
             issues = review_result.get('compliance_issues', [])
             status = review_result.get('status', 'approved')
             
+            issues_list = '\n'.join([f"• {issue.get('description', 'Unknown issue')} [{issue.get('severity', 'medium')}]" for issue in issues[:3]])
+            
             if status == 'approved' or compliance_score >= 70:
                 return f"""
 ## ✅ Compliance Review Complete
@@ -1010,8 +1112,7 @@ This recommendation has been prepared in accordance with SEC Investment Advisers
 
 **Status:** {'⚠️ APPROVED WITH WARNINGS' if issues else '✅ APPROVED'}
 
-{f"**Issues Identified ({len(issues)}):**" if issues else ""}
-{chr(10).join(f"• {issue.get('description', 'Unknown issue')} [{issue.get('severity', 'medium')}]" for issue in issues[:3])}
+{('**Issues Identified:**\n' + issues_list) if issues else ''}
 
 **Regulatory Compliance:**
 • SEC Investment Advisers Act: Compliant
@@ -1025,6 +1126,8 @@ This recommendation has been prepared in accordance with SEC Investment Advisers
 Reply with "Approve" to execute this trade, or ask questions for clarification.
 """
             else:
+                issues_list_full = '\n'.join([f"• {issue.get('description', 'Unknown issue')} [{issue.get('severity', 'critical')}]" for issue in issues])
+                
                 return f"""
 ## ❌ Compliance Review Failed
 
@@ -1035,7 +1138,7 @@ Reply with "Approve" to execute this trade, or ask questions for clarification.
 **Status:** REQUIRES REVISION
 
 **Critical Issues ({len(issues)}):**
-{chr(10).join(f"• {issue.get('description', 'Unknown issue')} [{issue.get('severity', 'critical')}]" for issue in issues)}
+{issues_list_full}
 
 **Recommendation:** This trade cannot proceed without addressing the compliance issues identified above.
 """

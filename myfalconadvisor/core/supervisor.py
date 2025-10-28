@@ -24,6 +24,7 @@ from ..agents.execution_agent import execution_service
 from ..agents.compliance_reviewer import compliance_reviewer_agent
 from ..core.config import Config
 from ..tools.chat_logger import chat_logger, log_user_message, log_supervisor_action, log_advisor_response
+from ..tools.alpaca_trading_service import alpaca_trading_service
 
 config = Config.get_instance()
 logger = logging.getLogger(__name__)
@@ -1001,11 +1002,22 @@ Could you please try rephrasing your question? I'm here to help with any questio
                 
                 for item in items:
                     if item.get('symbol', '').upper() == symbol.upper():
-                        if not current_price:
+                        if not current_price or current_price == 0:
                             current_price = item.get('current_price', 0)
                         existing_quantity = item.get('quantity', 0)
                         existing_value = item.get('market_value', item.get('value', 0))
                         break
+            
+            # If we still don't have a price (buying new stock), fetch real-time price from Alpaca
+            if not current_price or current_price == 0:
+                try:
+                    current_price = alpaca_trading_service._get_current_price(symbol)
+                    logger.info(f"Fetched real-time price for {symbol} from Alpaca: ${current_price}")
+                except Exception as e:
+                    logger.error(f"Failed to get price for {symbol} from Alpaca: {e}")
+                    # Use a conservative default estimate as fallback
+                    current_price = 100
+                    logger.warning(f"Using fallback price $100 for {symbol}")
             
             # Calculate trade value and NEW total position value
             if action.upper() == 'SELL':
@@ -1014,7 +1026,7 @@ Could you please try rephrasing your question? I'm here to help with any questio
                 new_position_value = existing_value - trade_value if existing_value > 0 else 0
             else:
                 # For BUY: calculate new trade value
-                new_trade_value = quantity * current_price if current_price > 0 else 0
+                new_trade_value = quantity * current_price
                 # Total position after buy = existing + new purchase
                 new_position_value = existing_value + new_trade_value
                 trade_value = new_trade_value
@@ -1022,7 +1034,11 @@ Could you please try rephrasing your question? I'm here to help with any questio
             portfolio_pct = (trade_value / portfolio_value * 100) if portfolio_value > 0 else 0
             new_position_pct = (new_position_value / portfolio_value * 100) if portfolio_value > 0 else 0
             
-            logger.info(f"Trade concentration check: {symbol} x {quantity} @ ${current_price if current_price else 'N/A'} = ${trade_value:,.2f} ({portfolio_pct:.1f}% of portfolio). After trade: {new_position_pct:.1f}% total position")
+            logger.info(f"Trade concentration check: {symbol} x {quantity} @ ${current_price} = ${trade_value:,.2f}")
+            logger.info(f"  - Existing position: {existing_quantity} shares = ${existing_value:,.2f} ({existing_value/portfolio_value*100:.1f}% if > 0)")
+            logger.info(f"  - Trade: {portfolio_pct:.1f}% of ${portfolio_value:,.2f} portfolio")
+            logger.info(f"  - NEW Total Position: {new_position_pct:.1f}% of portfolio")
+            logger.info(f"  - Will block if: {new_position_pct:.1f}% > 50% = {new_position_pct > 50}")
             
             # Severe concentration warning for large percentage trades
             # Check if NEW total position would be >50%, or if selling entire position

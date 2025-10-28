@@ -433,14 +433,18 @@ class AlpacaTradingService:
             # Get latest_price, fallback to None check
             latest_price = market_data.get("latest_price")
             if latest_price is not None:
+                logger.info(f"Using live quote price for {symbol}: ${latest_price}")
                 return float(latest_price)
             
-            # Fallback: try to get close price from latest bar
+            # Fallback: try to get close price from latest bar (market closed - using previous close)
             latest_bar = market_data.get("latest_bar")
             if latest_bar and latest_bar.get("close"):
-                return float(latest_bar["close"])
+                close_price = float(latest_bar["close"])
+                bar_timestamp = latest_bar.get("timestamp", "unknown")
+                logger.info(f"Market closed for {symbol}, using previous close: ${close_price} (from {bar_timestamp})")
+                return close_price
                 
-            logger.warning(f"No price data available for {symbol}, using fallback")
+            logger.warning(f"No price data available for {symbol}, using fallback price $100")
             return 100.0
             
         except Exception as e:

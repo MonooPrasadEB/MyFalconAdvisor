@@ -1040,6 +1040,16 @@ Could you please try rephrasing your question? I'm here to help with any questio
             logger.info(f"  - NEW Total Position: {new_position_pct:.1f}% of portfolio")
             logger.info(f"  - Will block if: {new_position_pct:.1f}% > 50% = {new_position_pct > 50}")
             
+            # Moderate concentration warning (25-50%) - shows warning but allows trade
+            moderate_warning = None
+            if 25 <= new_position_pct <= 50:
+                moderate_warning = f"""
+**⚠️ CONCENTRATION WARNING:**
+This trade would create a **{new_position_pct:.1f}% position in {symbol}**, which is a significant concentration for a single stock. While within acceptable limits, consider diversifying further to reduce risk.
+
+**Recommendation:** For better diversification, consider limiting any single position to 10-20% of your portfolio value.
+"""
+            
             # Severe concentration warning for large percentage trades
             # Check if NEW total position would be >50%, or if selling entire position
             if new_position_pct > 50 or (action.upper() == 'SELL' and existing_quantity == quantity):
@@ -1129,6 +1139,8 @@ This recommendation has been prepared in accordance with SEC Investment Advisers
 **Status:** {'⚠️ APPROVED WITH WARNINGS' if issues else '✅ APPROVED'}
 
 {('**Issues Identified:**\n' + issues_list) if issues else ''}
+
+{moderate_warning if moderate_warning else ''}
 
 **Regulatory Compliance:**
 • SEC Investment Advisers Act: Compliant

@@ -1084,6 +1084,13 @@ Would you like me to suggest a more suitable, diversified approach that aligns w
 """
             
             # Build comprehensive recommendation with suitability and risk disclosures
+            # Calculate estimated value impact
+            price_for_display = trade.get('price', 0)
+            if price_for_display:
+                estimated_value_text = f"${quantity * price_for_display:.2f}"
+            else:
+                estimated_value_text = "Market price at execution"
+            
             recommendation_content = f"""
 Investment Recommendation: {action.upper()} {quantity} shares of {symbol}
 
@@ -1097,7 +1104,7 @@ TRADE DETAILS:
 - Action: {action.upper()} {quantity} shares of {symbol}
 - Order Type: {trade.get('order_type', 'market').upper()}
 - Purpose: {'Raising cash / reducing position' if action.lower() == 'sell' else 'Deploying capital / building position'}
-- Estimated Value Impact: {'${:.2f}'.format(quantity * trade.get('price', 0)) if trade.get('price') else 'Market price at execution'}
+- Estimated Value Impact: {estimated_value_text}
 
 This recommendation has been prepared in accordance with SEC Investment Advisers Act and FINRA suitability requirements.
 """.strip()
@@ -1129,6 +1136,13 @@ This recommendation has been prepared in accordance with SEC Investment Advisers
             issues_list = '\n'.join([f"• {issue.get('description', 'Unknown issue')} [{issue.get('severity', 'medium')}]" for issue in issues[:3]])
             
             if status == 'approved' or compliance_score >= 70:
+                # Pre-calculate conditional strings to avoid f-string syntax errors
+                status_text = '⚠️ APPROVED WITH WARNINGS' if issues else '✅ APPROVED'
+                issues_section = ('**Issues Identified:**\n' + issues_list) if issues else ''
+                moderate_warning_section = moderate_warning if moderate_warning else ''
+                finra_status = '⚠️ Review Required' if len(issues) > 0 else 'Met'
+                reg_bi_status = '⚠️ Review Required' if len(issues) > 0 else 'Satisfied'
+                
                 return f"""
 ## ✅ Compliance Review Complete
 
@@ -1136,16 +1150,16 @@ This recommendation has been prepared in accordance with SEC Investment Advisers
 
 **Compliance Score:** {compliance_score}/100
 
-**Status:** {'⚠️ APPROVED WITH WARNINGS' if issues else '✅ APPROVED'}
+**Status:** {status_text}
 
-{('**Issues Identified:**\n' + issues_list) if issues else ''}
+{issues_section}
 
-{moderate_warning if moderate_warning else ''}
+{moderate_warning_section}
 
 **Regulatory Compliance:**
 • SEC Investment Advisers Act: Compliant
-• FINRA Suitability Rule 2111: {'⚠️ Review Required' if len(issues) > 0 else 'Met'}
-• Best Interest Standard (Reg BI): {'⚠️ Review Required' if len(issues) > 0 else 'Satisfied'}
+• FINRA Suitability Rule 2111: {finra_status}
+• Best Interest Standard (Reg BI): {reg_bi_status}
 
 **Transaction Status:** Pending - awaiting your approval
 **Database:** Transaction and compliance checks logged ✓

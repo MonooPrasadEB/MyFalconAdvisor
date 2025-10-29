@@ -36,7 +36,8 @@ sleep 2
 # Start backend
 echo -e "\n${GREEN}🚀 Starting backend API (port 8000)...${NC}"
 cd "$PROJECT_DIR"
-python start_web_api.py > "$LOG_DIR/web_api.log" 2>&1 &
+# Activate venv and start backend
+source venv/bin/activate && python start_web_api.py > "$LOG_DIR/web_api.log" 2>&1 &
 BACKEND_PID=$!
 echo "Backend PID: $BACKEND_PID"
 

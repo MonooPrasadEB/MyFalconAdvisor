@@ -456,9 +456,30 @@ body {
 
 .chat-bubble.assistant {
   background: white;
-  color: var(--gray-800);
+  color: var(--gray-900) !important;
   border: 1px solid var(--gray-200);
   border-bottom-left-radius: 4px;
+}
+
+/* Force readable text color for all elements except special ones */
+.chat-bubble.assistant p,
+.chat-bubble.assistant li,
+.chat-bubble.assistant span:not(.typing-dot):not(.typing-dot-large),
+.chat-bubble.assistant div:not([style*="color"]) {
+  color: var(--gray-900) !important;
+}
+
+/* Keep bold text with primary color */
+.chat-bubble.assistant strong {
+  color: var(--primary-700) !important;
+}
+
+/* Keep headings visible */
+.chat-bubble.assistant h1,
+.chat-bubble.assistant h2,
+.chat-bubble.assistant h3,
+.chat-bubble.assistant h4 {
+  color: var(--gray-900) !important;
 }
 
 .chat-input-container {

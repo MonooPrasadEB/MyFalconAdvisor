@@ -303,13 +303,13 @@ export default function ChatUI({ API_BASE, user, onNavigateToLearning }) {
                     <ReactMarkdown
                       remarkPlugins={[remarkGfm]}
                       components={{
-                        // Customize markdown rendering
-                        p: ({node, ...props}) => <p style={{margin: '0 0 12px 0'}} {...props} />,
-                        ul: ({node, ...props}) => <ul style={{margin: '8px 0', paddingLeft: '24px'}} {...props} />,
-                        ol: ({node, ...props}) => <ol style={{margin: '8px 0', paddingLeft: '24px'}} {...props} />,
-                        li: ({node, ...props}) => <li style={{margin: '4px 0'}} {...props} />,
+                        // Customize markdown rendering with explicit colors
+                        p: ({node, ...props}) => <p style={{margin: '0 0 12px 0', color: '#111827'}} {...props} />,
+                        ul: ({node, ...props}) => <ul style={{margin: '8px 0', paddingLeft: '24px', color: '#111827'}} {...props} />,
+                        ol: ({node, ...props}) => <ol style={{margin: '8px 0', paddingLeft: '24px', color: '#111827'}} {...props} />,
+                        li: ({node, ...props}) => <li style={{margin: '4px 0', color: '#111827'}} {...props} />,
                         strong: ({node, ...props}) => <strong style={{color: 'var(--primary-700)'}} {...props} />,
-                        h3: ({node, ...props}) => <h3 style={{margin: '16px 0 8px 0', fontSize: '1.1rem'}} {...props} />,
+                        h3: ({node, ...props}) => <h3 style={{margin: '16px 0 8px 0', fontSize: '1.1rem', color: '#111827'}} {...props} />,
                         table: ({node, ...props}) => (
                           <table style={{
                             width: '100%',

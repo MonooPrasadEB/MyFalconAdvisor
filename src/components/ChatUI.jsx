@@ -111,35 +111,142 @@ export default function ChatUI({ API_BASE, user, onNavigateToLearning }) {
 
     try {
       const token = localStorage.getItem('token')
-      const res = await axios.post(`${API_BASE}/chat`, 
-        { query: userMsg.content },
-        { headers: { Authorization: `Bearer ${token}` } }
-      )
-      const bot = res.data
       
-      setTimeout(() => {
-        setMessages(prev => [...prev, {
-          role: 'assistant',
-          content: bot.advisor_reply,
-          timestamp: new Date(),
-          complianceChecked: bot.compliance_checked,
-          complianceNotes: bot.compliance_notes,
-          actions: bot.suggested_actions,
-          learningResources: bot.learning_suggestions // New field for learning suggestions
-        }])
-        setIsTyping(false)
-      }, 1000) // Simulate thinking time
+      // Use fetch with streaming for Server-Sent Events
+      const response = await fetch(`${API_BASE}/chat`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+          'Accept': 'text/event-stream'
+        },
+        body: JSON.stringify({ query: userMsg.content })
+      })
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`)
+      }
+      
+      const reader = response.body.getReader()
+      const decoder = new TextDecoder()
+      
+      let streamingContent = ''
+      let streamingMessageIndex = null
+      let buffer = ''
+      
+      // Read the stream
+      while (true) {
+        const { done, value } = await reader.read()
+        
+        if (done) {
+          setIsTyping(false)
+          break
+        }
+        
+        // Decode the chunk and add to buffer
+        buffer += decoder.decode(value, { stream: true })
+        
+        // Process complete SSE messages in buffer
+        const lines = buffer.split('\n')
+        buffer = lines.pop() || '' // Keep incomplete line in buffer
+        
+        let currentEvent = null
+        
+        for (const line of lines) {
+          if (!line.trim() || line.startsWith(':')) continue
+          
+          if (line.startsWith('event:')) {
+            // Event type line
+            currentEvent = line.slice(6).trim()
+            continue
+          }
+          
+          if (line.startsWith('data:')) {
+            const dataStr = line.slice(5).trim()
+            
+            try {
+              const data = JSON.parse(dataStr)
+              
+              if (currentEvent === 'message' && data.content) {
+                // Accumulate streaming content
+                streamingContent += data.content
+                
+                // Update or create the streaming message
+                setMessages(prev => {
+                  const newMessages = [...prev]
+                  
+                  if (streamingMessageIndex === null) {
+                    // First chunk - create new message
+                    streamingMessageIndex = newMessages.length
+                    newMessages.push({
+                      role: 'assistant',
+                      content: streamingContent,
+                      timestamp: new Date(),
+                      isStreaming: true
+                    })
+                  } else {
+                    // Update existing message
+                    newMessages[streamingMessageIndex] = {
+                      ...newMessages[streamingMessageIndex],
+                      content: streamingContent
+                    }
+                  }
+                  
+                  return newMessages
+                })
+              } else if (currentEvent === 'final' && data) {
+                // Final message with metadata
+                setMessages(prev => {
+                  const newMessages = [...prev]
+                  if (streamingMessageIndex !== null) {
+                    newMessages[streamingMessageIndex] = {
+                      role: 'assistant',
+                      content: data.advisor_reply || streamingContent,
+                      timestamp: new Date(),
+                      complianceChecked: data.compliance_checked,
+                      complianceNotes: data.compliance_notes,
+                      actions: data.suggested_actions,
+                      learningResources: data.learning_suggestions,
+                      isStreaming: false
+                    }
+                  } else {
+                    // Fallback if no streaming chunks received
+                    newMessages.push({
+                      role: 'assistant',
+                      content: data.advisor_reply,
+                      timestamp: new Date(),
+                      complianceChecked: data.compliance_checked,
+                      complianceNotes: data.compliance_notes,
+                      actions: data.suggested_actions,
+                      learningResources: data.learning_suggestions
+                    })
+                  }
+                  return newMessages
+                })
+                
+                setIsTyping(false)
+              } else if (currentEvent === 'error') {
+                throw new Error(data.message || 'Stream error')
+              }
+              
+              // Reset event after processing
+              currentEvent = null
+            } catch (parseError) {
+              console.error('Error parsing SSE data:', parseError, 'Data:', dataStr)
+            }
+          }
+        }
+      }
       
     } catch (e) {
-      setTimeout(() => {
-        setMessages(prev => [...prev, {
-          role: 'assistant',
-          content: '❌ Sorry, I encountered an error. Please make sure the backend is running and try again.',
-          timestamp: new Date(),
-          isError: true
-        }])
-        setIsTyping(false)
-      }, 500)
+      console.error('Chat error:', e)
+      setMessages(prev => [...prev, {
+        role: 'assistant',
+        content: '❌ Sorry, I encountered an error. Please make sure the backend is running and try again.',
+        timestamp: new Date(),
+        isError: true
+      }])
+      setIsTyping(false)
     }
   }
 
@@ -328,7 +435,7 @@ export default function ChatUI({ API_BASE, user, onNavigateToLearning }) {
                 <div className="chat-bubble assistant" style={{ background: 'linear-gradient(135deg, var(--primary-50) 0%, var(--blue-50) 100%)' }}>
                   <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                     <span style={{ fontSize: '1.1rem', fontWeight: '600', color: 'var(--primary-700)' }}>
-                      🧠 Analyzing your portfolio...
+                      ⚙️ Working...
                     </span>
                     <div style={{ display: 'flex', gap: '4px' }}>
                       <div className="typing-dot-large" style={{ animationDelay: '0ms' }}></div>

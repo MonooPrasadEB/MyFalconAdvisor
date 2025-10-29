@@ -805,6 +805,370 @@ Format your response as a clear, professional trade execution analysis.
             None, self.process_client_request, request, client_profile, portfolio_data, session_id
         )
     
+    async def process_client_request_streaming(
+        self,
+        request: str,
+        client_profile: Optional[Dict] = None,
+        portfolio_data: Optional[Dict] = None,
+        session_id: Optional[str] = None,
+        user_id: Optional[str] = None
+    ):
+        """
+        Process client request with streaming support.
+        
+        Yields chunks of the LLM response as they're generated, then provides
+        the final result with metadata.
+        """
+        try:
+            # Start or continue chat session
+            if not session_id:
+                session_type = "advisory"
+                if "trade" in request.lower() or "buy" in request.lower() or "sell" in request.lower():
+                    session_type = "execution"
+                
+                session_id = chat_logger.start_session(
+                    user_id=user_id,
+                    session_type=session_type,
+                    context_data={
+                        "client_profile": client_profile or {},
+                        "portfolio_data": portfolio_data or {},
+                        "initial_request": request
+                    }
+                )
+                if session_id:
+                    logger.info(f"Started new chat session: {session_id}")
+            
+            # Log user message
+            if session_id:
+                log_user_message(
+                    request,
+                    session_id=session_id,
+                    metadata={
+                        "has_client_profile": bool(client_profile),
+                        "has_portfolio_data": bool(portfolio_data),
+                        "request_type": "investment_inquiry"
+                    }
+                )
+            
+            # Analyze request to determine which agent to use
+            routing_decision = self._get_llm_routing_decision(
+                request,
+                portfolio_data,
+                client_profile
+            )
+            
+            # Stream the response based on routing
+            agent_type = routing_decision.get("agent", "portfolio_analysis")
+            
+            if agent_type == "portfolio_analysis":
+                # Stream portfolio analysis response
+                async for chunk in self._stream_conversational_analysis(
+                    request,
+                    portfolio_data or {},
+                    client_profile or {}
+                ):
+                    yield chunk
+                    
+            elif agent_type == "trade_execution":
+                # Stream trade execution response
+                async for chunk in self._stream_trade_processing(
+                    request,
+                    portfolio_data or {},
+                    client_profile or {}
+                ):
+                    yield chunk
+                    
+            else:
+                # Default to portfolio analysis
+                async for chunk in self._stream_conversational_analysis(
+                    request,
+                    portfolio_data or {},
+                    client_profile or {}
+                ):
+                    yield chunk
+            
+        except Exception as e:
+            logger.error(f"Error in streaming request: {e}")
+            yield {
+                "type": "error",
+                "error": str(e),
+                "message": "I encountered an error processing your request."
+            }
+    
+    async def _stream_conversational_analysis(
+        self,
+        request: str,
+        portfolio_data: Dict,
+        client_profile: Dict
+    ):
+        """Stream conversational analysis responses from LLM."""
+        try:
+            # Build portfolio context (same as non-streaming version)
+            assets = portfolio_data.get('assets', [])
+            if not assets:
+                yield {
+                    "type": "content",
+                    "content": "I don't see any portfolio data loaded. Please load your portfolio first."
+                }
+                yield {
+                    "type": "final",
+                    "result": {
+                        "response": "No portfolio data available",
+                        "workflow_complete": True,
+                        "analysis_results": {},
+                        "trade_recommendations": [],
+                        "compliance_approved": True,
+                        "requires_user_approval": False
+                    }
+                }
+                return
+            
+            # Calculate portfolio metrics
+            total_value = portfolio_data.get('total_value', 0)
+            tech_allocation = sum(asset.get('allocation', 0) for asset in assets 
+                                if asset.get('sector') and asset.get('sector', '').lower().startswith('tech'))
+            num_assets = len(assets)
+            max_allocation = max([asset.get('allocation', 0) for asset in assets]) if assets else 0
+            
+            top_holdings = sorted(assets, key=lambda x: x.get('allocation', 0), reverse=True)[:5]
+            holdings_summary = ", ".join([f"{asset.get('symbol')} ({asset.get('allocation', 0):.1f}%)" 
+                                        for asset in top_holdings])
+            
+            detailed_holdings = "\n".join([
+                f"  • {asset.get('symbol')}: {asset.get('quantity', 0):.2f} shares @ ${asset.get('current_price', 0):.2f} = ${asset.get('market_value', 0):,.2f} ({asset.get('allocation', 0):.1f}%) - Sector: {asset.get('sector', 'Unknown')}"
+                for asset in sorted(assets, key=lambda x: x.get('allocation', 0), reverse=True)
+            ])
+            
+            cash_balance = portfolio_data.get('cash_balance', 0)
+            equity_value = sum(asset.get('market_value', 0) for asset in assets)
+            cash_percentage = (cash_balance / total_value * 100) if total_value > 0 else 0
+            
+            portfolio_context = f"""
+PORTFOLIO CONTEXT:
+- Total Portfolio Value: ${total_value:,.2f}
+- Cash Balance: ${cash_balance:,.2f} ({cash_percentage:.1f}%)
+- Equity Holdings Value: ${equity_value:,.2f} ({100 - cash_percentage:.1f}%)
+- Number of Stock Positions: {num_assets}
+- Tech Allocation: {tech_allocation:.1f}%
+- Largest Position: {max_allocation:.1f}%
+- Risk Profile: {"High (tech-focused)" if tech_allocation > 60 else "Moderate"}
+
+COMPLETE HOLDINGS LIST:
+{detailed_holdings}
+
+CASH POSITION:
+  • Cash: ${cash_balance:,.2f} ({cash_percentage:.1f}% of portfolio)
+"""
+            
+            # Create streaming prompt
+            prompt = ChatPromptTemplate.from_template("""
+You are an experienced investment advisor having a conversation with a client about their portfolio.
+
+{portfolio_context}
+
+CLIENT QUESTION: "{request}"
+
+Provide a conversational, helpful response that:
+1. Directly addresses their specific question
+2. References their actual portfolio holdings from the COMPLETE HOLDINGS LIST above
+3. When asked about specific stocks, check if they own them by reviewing the complete holdings list
+4. Gives personalized advice based on their actual positions
+5. Uses a friendly, professional tone
+6. Keeps response focused and concise (2-3 paragraphs max)
+
+IMPORTANT: 
+- If asked about a specific stock, ALWAYS check the complete holdings list first before saying they don't own it
+- Use the actual quantities, prices, and allocations from the holdings list
+- Reference the sector information provided for each holding
+
+FORMATTING GUIDELINES:
+- When presenting structured data (sector breakdowns, top holdings, comparisons), use **markdown tables** for clarity
+- Use tables for: sector breakdowns, holdings lists, performance comparisons, allocation summaries
+- Use bullet points for: recommendations, action items, general advice
+- Use bold (**text**) to emphasize key figures, percentages, and important holdings
+
+If they want to stay aggressive, support that preference and give advice on how to optimize their aggressive strategy.
+Be conversational, not templated.
+""")
+            
+            # Stream from LLM
+            chain = prompt | self.llm
+            full_response = ""
+            
+            async for chunk in chain.astream({
+                "portfolio_context": portfolio_context,
+                "request": request
+            }):
+                content = chunk.content if hasattr(chunk, 'content') else str(chunk)
+                full_response += content
+                
+                # Yield each chunk
+                yield {
+                    "type": "content",
+                    "content": content
+                }
+            
+            # Calculate analysis results
+            num_assets = len(assets)
+            diversification_score = min(10, num_assets * 2)
+            risk_score = min(10, (tech_allocation / 10) + (diversification_score / 2))
+            
+            recommendations = []
+            if tech_allocation > 50:
+                recommendations.append("Reduce technology concentration")
+            if num_assets < 5:
+                recommendations.append("Add more diversification")
+            if not any(asset.get('asset_type') == 'bond' for asset in assets):
+                recommendations.append("Add fixed income allocation")
+            
+            analysis_results = {
+                "portfolio_metrics": {
+                    "risk_score": round(risk_score, 1),
+                    "diversification_score": round(diversification_score, 1),
+                    "tech_allocation": round(tech_allocation, 1),
+                    "num_holdings": num_assets
+                },
+                "recommendations": recommendations if recommendations else ["Portfolio appears well balanced"],
+                "risk_assessment": {"tolerance": "moderate", "score": round(risk_score, 1)}
+            }
+            
+            # Send final metadata
+            yield {
+                "type": "final",
+                "result": {
+                    "response": full_response,
+                    "workflow_complete": True,
+                    "analysis_results": analysis_results,
+                    "trade_recommendations": [],
+                    "compliance_approved": True,
+                    "requires_user_approval": False
+                }
+            }
+            
+        except Exception as e:
+            logger.error(f"Error streaming conversational analysis: {e}")
+            yield {
+                "type": "error",
+                "error": str(e)
+            }
+    
+    async def _stream_trade_processing(
+        self,
+        request: str,
+        portfolio_data: Dict,
+        client_profile: Dict
+    ):
+        """Stream trade processing responses from LLM."""
+        try:
+            # Build portfolio context
+            portfolio_context = ""
+            current_holdings = {}
+            
+            if portfolio_data and 'holdings' in portfolio_data:
+                total_value = sum(
+                    holding.get('quantity', 0) * holding.get('current_price', 0)
+                    for holding in portfolio_data['holdings']
+                )
+                portfolio_context = f"Current Portfolio Value: ${total_value:,.2f}\nHoldings:\n"
+                
+                for holding in portfolio_data['holdings']:
+                    symbol = holding.get('symbol', 'Unknown')
+                    quantity = holding.get('quantity', 0)
+                    price = holding.get('current_price', 0)
+                    value = quantity * price
+                    
+                    current_holdings[symbol] = {
+                        'quantity': quantity,
+                        'price': price,
+                        'value': value
+                    }
+                    
+                    portfolio_context += f"- {symbol}: {quantity} shares @ ${price:.2f} = ${value:,.2f}\n"
+            
+            client_context = ""
+            if client_profile:
+                risk_tolerance = client_profile.get('risk_tolerance', 'moderate')
+                experience = client_profile.get('investment_experience', 'intermediate')
+                client_context = f"Risk Tolerance: {risk_tolerance}, Experience: {experience}"
+            
+            # Create trade processing prompt
+            trade_prompt = ChatPromptTemplate.from_template("""
+You are a professional trade execution specialist analyzing a client's trade request.
+
+TRADE REQUEST: "{request}"
+
+CURRENT PORTFOLIO:
+{portfolio_context}
+
+CLIENT PROFILE: {client_context}
+
+TASK: Analyze this trade request and provide:
+
+1. **Trade Validation**: Is this a valid, executable trade request?
+2. **Portfolio Impact**: How will this affect their portfolio?
+3. **Risk Analysis**: What are the implications?
+4. **Execution Plan**: Specific steps to execute this trade
+5. **Recommendations**: Any suggestions or concerns
+
+If the request is for a SELL order:
+- Check if they own the stock and have enough shares
+- Calculate the proceeds and portfolio impact
+- Provide specific execution details
+
+If the request is for a BUY order:
+- Estimate cost and market impact
+- Check portfolio balance implications
+- Provide execution guidance
+
+Respond in a professional, clear manner that helps the client understand:
+- What exactly will be executed
+- The financial impact
+- Any risks or considerations
+- Next steps for approval/execution
+
+Be conversational but precise.
+""")
+            
+            # Stream from LLM
+            chain = trade_prompt | self.llm
+            full_response = ""
+            
+            async for chunk in chain.astream({
+                "request": request,
+                "portfolio_context": portfolio_context,
+                "client_context": client_context
+            }):
+                content = chunk.content if hasattr(chunk, 'content') else str(chunk)
+                full_response += content
+                
+                yield {
+                    "type": "content",
+                    "content": content
+                }
+            
+            # Extract trade details
+            trade_details = self._extract_trade_details(request)
+            
+            # Send final metadata
+            yield {
+                "type": "final",
+                "result": {
+                    "response": full_response,
+                    "workflow_complete": False,
+                    "analysis_results": {},
+                    "trade_recommendations": [trade_details] if trade_details else [],
+                    "compliance_approved": False,
+                    "requires_user_approval": True
+                }
+            }
+            
+        except Exception as e:
+            logger.error(f"Error streaming trade processing: {e}")
+            yield {
+                "type": "error",
+                "error": str(e)
+            }
+    
     # Helper methods for LLM-based conversational analysis
     
     def _create_portfolio_analysis_prompt(self, state: InvestmentAdvisorState) -> str:

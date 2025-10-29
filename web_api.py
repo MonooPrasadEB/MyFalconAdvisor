@@ -27,6 +27,8 @@ sys.path.append(str(Path(__file__).parent))
 # FastAPI imports
 from fastapi import FastAPI, HTTPException, Depends, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
+from sse_starlette.sse import EventSourceResponse
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -351,133 +353,140 @@ async def signup(request: SignupRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Signup failed: {str(e)}")
 
-# Chat endpoint - integrates with MyFalconAdvisor AI agents
+# Chat endpoint - integrates with MyFalconAdvisor AI agents (STREAMING)
 @app.post("/chat")
 async def chat(request: ChatRequest, current_user: dict = Depends(get_current_user)):
-    """AI Chat endpoint using MyFalconAdvisor supervisor"""
-    try:
-        user_id = current_user["user_id"]
+    """AI Chat endpoint with streaming support using Server-Sent Events"""
+    user_id = current_user["user_id"]
+    
+    async def generate_stream():
+        """Generate streaming responses from the AI advisor"""
+        import json
         
-        # Get user profile from database
-        client_profile = await get_user_profile(user_id)
-        logger.info(f"Client profile: {client_profile}")
-        
-        # Get user's portfolio from database
-        portfolio_data = await get_user_portfolio(user_id)
-        logger.info(f"Portfolio data available: {portfolio_data is not None}")
-        
-        # If portfolio data is not available, provide a helpful response
-        if not portfolio_data:
-            return {
-                "advisor_reply": f"Hello {client_profile.get('first_name', 'there')}! I can see you're logged in, but I don't have access to your portfolio data at the moment. Please ensure your portfolio is properly loaded, and I'll be happy to help you with your investment questions!",
-                "compliance_checked": True,
-                "compliance_notes": ["Investment advice is for educational purposes only"],
-                "suggested_actions": ["Check portfolio connection", "Verify account setup"],
-                "learning_suggestions": [],
-                "error": "Portfolio data not available"
-            }
-        
-        # Use the actual MyFalconAdvisor AI supervisor for intelligent responses
-        user_name = client_profile.get('first_name', 'there')
-        
-        # Transform portfolio data to format expected by supervisor
-        # Supervisor expects 'assets' key, but web API returns 'holdings'
-        supervisor_portfolio_data = {
-            "total_value": portfolio_data.get('total_value', 0),
-            "cash_balance": portfolio_data.get('cash_balance', 0),
-            "assets": []
-        }
-        
-        # Convert holdings to assets format
-        for holding in portfolio_data.get('holdings', []):
-            supervisor_portfolio_data["assets"].append({
-                "symbol": holding.get('symbol', ''),
-                "quantity": holding.get('shares', 0),
-                "current_price": holding.get('price', 0),
-                "market_value": holding.get('value', 0),
-                "allocation": holding.get('allocation', 0),
-                "sector": holding.get('sector', 'Other')
-            })
-        
-        # Process the query through the investment advisor supervisor
-        result = investment_advisor_supervisor.process_client_request(
-            request=request.query,
-            user_id=user_id,
-            client_profile=client_profile,
-            portfolio_data=supervisor_portfolio_data
-        )
-        
-        # Ensure result has the expected structure
-        if not result or not isinstance(result, dict):
-            result = {
-                "response": f"Hello {user_name}! I processed your question but encountered an issue formatting the response. Could you please rephrase your question?",
-                "session_id": f"session_{user_id}_{int(datetime.now().timestamp())}",
-                "workflow_complete": True,
-                "analysis_results": {},
-                "trade_recommendations": [],
-                "compliance_approved": True,
-                "requires_user_approval": False
-            }
-        
-        # Extract learning suggestions if available
-        learning_suggestions = []
-        analysis_results = result.get("analysis_results") or {}
-        if isinstance(analysis_results, dict) and "learning_content" in analysis_results:
-            learning_content = analysis_results["learning_content"]
-            if isinstance(learning_content, list):
-                learning_suggestions = [
-                    {
-                        "title": item.get("topic", "Financial Education"),
-                        "topic": item.get("topic", "general"),
-                        "description": item.get("content", "Learn more about this topic")
-                    }
-                    for item in learning_content[:2]  # Limit to 2 suggestions
-                ]
-        
-        # Extract suggested actions from trade recommendations
-        suggested_actions = []
-        trade_recs = result.get("trade_recommendations") or []
-        if isinstance(trade_recs, list):
-            for rec in trade_recs:
-                if isinstance(rec, dict):
-                    suggested_actions.append({
-                        "type": rec.get("action", "rebalance"),
-                        "from": rec.get("from_asset", rec.get("symbol", "")),
-                        "to": rec.get("to_asset", ""),
-                        "amount_pct": rec.get("percentage", rec.get("amount", ""))
+        try:
+            # Get user profile from database
+            client_profile = await get_user_profile(user_id)
+            logger.info(f"Client profile: {client_profile}")
+            
+            # Get user's portfolio from database
+            portfolio_data = await get_user_portfolio(user_id)
+            logger.info(f"Portfolio data available: {portfolio_data is not None}")
+            
+            # If portfolio data is not available, provide a helpful response
+            if not portfolio_data:
+                yield {
+                    "event": "message",
+                    "data": json.dumps({
+                        "content": f"Hello {client_profile.get('first_name', 'there')}! I can see you're logged in, but I don't have access to your portfolio data at the moment.",
+                        "done": False
                     })
-        
-        return {
-            "advisor_reply": result.get("response", "I'm processing your request..."),
-            "compliance_checked": True,
-            "compliance_notes": ["Investment advice is for educational purposes only"],
-            "suggested_actions": suggested_actions,
-            "learning_suggestions": learning_suggestions,
-            "analysis_results": result.get("analysis_results"),
-            "trade_recommendations": trade_recs,
-            "requires_user_approval": result.get("requires_user_approval", False)
-        }
-        
-    except Exception as e:
-        logger.error(f"Chat error: {str(e)}")
-        logger.error(traceback.format_exc())
-        
-        # Fallback response with user-friendly message
-        user_name = client_profile.get('first_name', 'there') if 'client_profile' in locals() else 'there'
-        return {
-            "advisor_reply": f"Hello {user_name}! I'm having trouble processing your question right now, but I can still help you with general investment advice. Your question was: \"{request.query}\". Could you try rephrasing it or ask about something specific like 'How is my portfolio performing?' or 'What should I know about current market trends?'",
-            "compliance_checked": True,
-            "compliance_notes": ["Investment advice is for educational purposes only"],
-            "suggested_actions": ["Try rephrasing your question", "Ask about portfolio performance", "Ask about market trends"],
-            "learning_suggestions": [
-                {
-                    "title": "Portfolio Analysis",
-                    "topic": "portfolio",
-                    "description": "Learn how to analyze your investment portfolio"
                 }
-            ],
-            "error": str(e)
-        }
+                yield {
+                    "event": "final",
+                    "data": json.dumps({
+                        "advisor_reply": f"Hello {client_profile.get('first_name', 'there')}! I can see you're logged in, but I don't have access to your portfolio data at the moment. Please ensure your portfolio is properly loaded, and I'll be happy to help you with your investment questions!",
+                        "compliance_checked": True,
+                        "compliance_notes": ["Investment advice is for educational purposes only"],
+                        "suggested_actions": ["Check portfolio connection", "Verify account setup"],
+                        "learning_suggestions": [],
+                        "error": "Portfolio data not available"
+                    })
+                }
+                return
+            
+            # Transform portfolio data to format expected by supervisor
+            supervisor_portfolio_data = {
+                "total_value": portfolio_data.get('total_value', 0),
+                "cash_balance": portfolio_data.get('cash_balance', 0),
+                "assets": []
+            }
+            
+            # Convert holdings to assets format
+            for holding in portfolio_data.get('holdings', []):
+                supervisor_portfolio_data["assets"].append({
+                    "symbol": holding.get('symbol', ''),
+                    "quantity": holding.get('shares', 0),
+                    "current_price": holding.get('price', 0),
+                    "market_value": holding.get('value', 0),
+                    "allocation": holding.get('allocation', 0),
+                    "sector": holding.get('sector', 'Other')
+                })
+            
+            # Process the query through the investment advisor supervisor WITH STREAMING
+            async for chunk in investment_advisor_supervisor.process_client_request_streaming(
+                request=request.query,
+                user_id=user_id,
+                client_profile=client_profile,
+                portfolio_data=supervisor_portfolio_data
+            ):
+                if chunk.get("type") == "content":
+                    # Stream content chunks - yield dict with event and data
+                    yield {
+                        "event": "message",
+                        "data": json.dumps({
+                            "content": chunk.get("content", ""),
+                            "done": False
+                        })
+                    }
+                elif chunk.get("type") == "final":
+                    # Final result with metadata
+                    result = chunk.get("result", {})
+                    
+                    # Extract learning suggestions
+                    learning_suggestions = []
+                    analysis_results = result.get("analysis_results") or {}
+                    if isinstance(analysis_results, dict) and "learning_content" in analysis_results:
+                        learning_content = analysis_results["learning_content"]
+                        if isinstance(learning_content, list):
+                            learning_suggestions = [
+                                {
+                                    "title": item.get("topic", "Financial Education"),
+                                    "topic": item.get("topic", "general"),
+                                    "description": item.get("content", "Learn more about this topic")
+                                }
+                                for item in learning_content[:2]
+                            ]
+                    
+                    # Extract suggested actions
+                    suggested_actions = []
+                    trade_recs = result.get("trade_recommendations") or []
+                    if isinstance(trade_recs, list):
+                        for rec in trade_recs:
+                            if isinstance(rec, dict):
+                                suggested_actions.append({
+                                    "type": rec.get("action", "rebalance"),
+                                    "from": rec.get("from_asset", rec.get("symbol", "")),
+                                    "to": rec.get("to_asset", ""),
+                                    "amount_pct": rec.get("percentage", rec.get("amount", ""))
+                                })
+                    
+                    yield {
+                        "event": "final",
+                        "data": json.dumps({
+                            "advisor_reply": result.get("response", ""),
+                            "compliance_checked": True,
+                            "compliance_notes": ["Investment advice is for educational purposes only"],
+                            "suggested_actions": suggested_actions,
+                            "learning_suggestions": learning_suggestions,
+                            "analysis_results": result.get("analysis_results"),
+                            "trade_recommendations": trade_recs,
+                            "requires_user_approval": result.get("requires_user_approval", False)
+                        })
+                    }
+                    
+        except Exception as e:
+            logger.error(f"Chat streaming error: {str(e)}")
+            logger.error(traceback.format_exc())
+            
+            yield {
+                "event": "error",
+                "data": json.dumps({
+                    "error": str(e),
+                    "message": "I encountered an error processing your request. Please try again."
+                })
+            }
+    
+    return EventSourceResponse(generate_stream())
 
 # Portfolio endpoint - integrates with database and portfolio analyzer
 @app.get("/portfolio")

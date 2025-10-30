@@ -362,15 +362,43 @@ async def chat(request: ChatRequest, current_user: dict = Depends(get_current_us
     async def generate_stream():
         """Generate streaming responses from the AI advisor"""
         import json
+        from datetime import datetime
         
         try:
+            # Sync portfolio from Alpaca before fetching (ensures fresh data)
+            sync_timestamp = datetime.now()
+            logger.info(f"Syncing portfolio for user {user_id} at {sync_timestamp}")
+            
+            # Get portfolio_id for sync
+            with database_service.get_session() as session:
+                from sqlalchemy import text
+                portfolio_result = session.execute(text("""
+                    SELECT portfolio_id FROM portfolios 
+                    WHERE user_id = :user_id
+                    ORDER BY created_at DESC LIMIT 1
+                """), {"user_id": user_id})
+                portfolio_row = portfolio_result.fetchone()
+                
+                if portfolio_row:
+                    portfolio_id = portfolio_row[0]
+                    # Sync from Alpaca
+                    sync_result = alpaca_trading_service.sync_portfolio_from_alpaca(user_id, portfolio_id)
+                    if sync_result.get("error"):
+                        logger.warning(f"Portfolio sync warning: {sync_result['error']}")
+                    else:
+                        logger.info(f"✅ Portfolio synced successfully for {user_id}")
+            
             # Get user profile from database
             client_profile = await get_user_profile(user_id)
             logger.info(f"Client profile: {client_profile}")
             
-            # Get user's portfolio from database
+            # Get user's portfolio from database (now fresh from Alpaca)
             portfolio_data = await get_user_portfolio(user_id)
             logger.info(f"Portfolio data available: {portfolio_data is not None}")
+            
+            # Add sync timestamp to portfolio data
+            if portfolio_data:
+                portfolio_data['synced_at'] = sync_timestamp.isoformat()
             
             # If portfolio data is not available, provide a helpful response
             if not portfolio_data:
@@ -398,6 +426,7 @@ async def chat(request: ChatRequest, current_user: dict = Depends(get_current_us
             supervisor_portfolio_data = {
                 "total_value": portfolio_data.get('total_value', 0),
                 "cash_balance": portfolio_data.get('cash_balance', 0),
+                "synced_at": portfolio_data.get('synced_at'),
                 "assets": []
             }
             

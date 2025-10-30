@@ -950,7 +950,25 @@ Format your response as a clear, professional trade execution analysis.
             equity_value = sum(asset.get('market_value', 0) for asset in assets)
             cash_percentage = (cash_balance / total_value * 100) if total_value > 0 else 0
             
+            # Look up requested stock prices (if asking about specific stocks not in portfolio)
+            stock_price_info = self._lookup_stock_prices_from_query(request, assets)
+            
+            # Format sync timestamp
+            synced_at = portfolio_data.get('synced_at', 'Unknown')
+            if synced_at and synced_at != 'Unknown':
+                from datetime import datetime
+                try:
+                    sync_dt = datetime.fromisoformat(synced_at)
+                    synced_at_display = sync_dt.strftime("%B %d, %Y at %I:%M %p")
+                except:
+                    synced_at_display = synced_at
+            else:
+                synced_at_display = "Unknown"
+            
             portfolio_context = f"""
+PORTFOLIO DATA AS OF: {synced_at_display}
+(Portfolio data synced from Alpaca)
+
 PORTFOLIO CONTEXT:
 - Total Portfolio Value: ${total_value:,.2f}
 - Cash Balance: ${cash_balance:,.2f} ({cash_percentage:.1f}%)
@@ -965,6 +983,8 @@ COMPLETE HOLDINGS LIST:
 
 CASH POSITION:
   • Cash: ${cash_balance:,.2f} ({cash_percentage:.1f}% of portfolio)
+
+{stock_price_info}
 """
             
             # Create streaming prompt
@@ -977,15 +997,19 @@ CLIENT QUESTION: "{request}"
 
 Provide a conversational, helpful response that:
 1. Directly addresses their specific question
-2. References their actual portfolio holdings from the COMPLETE HOLDINGS LIST above
-3. When asked about specific stocks, check if they own them by reviewing the complete holdings list
-4. Gives personalized advice based on their actual positions
-5. Uses a friendly, professional tone
-6. Keeps response focused and concise (2-3 paragraphs max)
+2. Note the portfolio data timestamp at the top (PORTFOLIO DATA AS OF) - mention it naturally if relevant
+3. References their actual portfolio holdings from the COMPLETE HOLDINGS LIST above
+4. When asked about specific stocks, check if they own them by reviewing the complete holdings list
+5. If asked about stock prices for stocks NOT in their portfolio, use the REQUESTED STOCK PRICES section
+6. Gives personalized advice based on their actual positions
+7. Uses a friendly, professional tone
+8. Keeps response focused and concise (2-3 paragraphs max)
 
 IMPORTANT: 
+- The portfolio was just synced from Alpaca - data is current as of the timestamp shown
 - If asked about a specific stock, ALWAYS check the complete holdings list first before saying they don't own it
 - Use the actual quantities, prices, and allocations from the holdings list
+- If REQUESTED STOCK PRICES section is present, use those real-time prices when discussing those stocks
 - Reference the sector information provided for each holding
 
 FORMATTING GUIDELINES:
@@ -1191,6 +1215,117 @@ Be conversational but precise.
         Please provide comprehensive portfolio analysis including risk assessment and recommendations.
         """
     
+    def _lookup_stock_prices_from_query(self, query: str, portfolio_assets: List[Dict]) -> str:
+        """
+        Extract stock symbols from user query and look up real-time prices for stocks not in portfolio.
+        Uses LLM to intelligently extract ticker symbols from natural language.
+        Returns formatted string with price information to add to context.
+        """
+        import re
+        
+        logger.info(f"🔍 Attempting to extract ticker symbols from query: '{query}'")
+        
+        # Get list of symbols already in portfolio
+        portfolio_symbols = {asset.get('symbol', '').upper() for asset in portfolio_assets}
+        logger.info(f"📊 Portfolio already contains: {portfolio_symbols}")
+        
+        # Use LLM to extract ticker symbols from the query
+        try:
+            extraction_prompt = ChatPromptTemplate.from_template("""
+Extract stock ticker symbols from this user query. Return ONLY ticker symbols mentioned or implied.
+
+USER QUERY: "{query}"
+
+Examples:
+"What is the price of NTNX?" → ["NTNX"]
+"How much is Nutanix stock?" → ["NTNX"]
+"Tell me about Apple and Microsoft" → ["AAPL", "MSFT"]
+"What's the price of Pfizer stock now?" → ["PFE"]
+"How is my portfolio doing?" → []
+"Should I buy TSLA?" → ["TSLA"]
+
+Return ONLY a JSON array of uppercase ticker symbols (1-5 letters each), or empty array if none found:
+["SYMBOL1", "SYMBOL2"] or []
+""")
+            
+            chain = extraction_prompt | self.llm
+            response = chain.invoke({"query": query})
+            
+            logger.info(f"🤖 LLM ticker extraction response: {response.content}")
+            
+            import json
+            # Try to parse JSON array from response
+            potential_symbols = set()
+            
+            # Extract JSON array from response
+            json_match = re.search(r'\[(.*?)\]', response.content, re.DOTALL)
+            if json_match:
+                try:
+                    symbols_list = json.loads(json_match.group(0))
+                    if isinstance(symbols_list, list):
+                        for sym in symbols_list:
+                            if isinstance(sym, str) and 1 <= len(sym) <= 5:
+                                potential_symbols.add(sym.upper())
+                        logger.info(f"✅ Extracted symbols from LLM: {potential_symbols}")
+                except json.JSONDecodeError:
+                    logger.warning(f"Failed to parse LLM ticker extraction: {response.content}")
+            
+            # Fallback: also check for direct ticker patterns in original query
+            for match in re.finditer(r'\b([A-Z]{1,5})\b', query):
+                symbol = match.group(1)
+                # Filter out common English words
+                if symbol not in ['I', 'A', 'US', 'USA', 'UK', 'CEO', 'CFO', 'CTO', 'AI', 'ML', 'API', 'FAQ', 'PDF', 'JPG', 'PNG', 'IS', 'IT', 'OR', 'AND', 'THE']:
+                    potential_symbols.add(symbol)
+            
+        except Exception as e:
+            logger.error(f"Error in LLM ticker extraction: {e}")
+            # Fallback to simple regex
+            potential_symbols = set()
+            for match in re.finditer(r'\b([A-Z]{1,5})\b', query):
+                symbol = match.group(1)
+                if symbol not in ['I', 'A', 'US', 'USA', 'UK', 'CEO', 'CFO', 'CTO', 'AI', 'ML', 'API', 'FAQ', 'PDF', 'JPG', 'PNG', 'IS', 'IT', 'OR', 'AND', 'THE']:
+                    potential_symbols.add(symbol)
+        
+        # Filter out symbols already in portfolio
+        symbols_to_lookup = potential_symbols - portfolio_symbols
+        
+        logger.info(f"💰 Symbols to lookup (not in portfolio): {symbols_to_lookup}")
+        
+        if not symbols_to_lookup:
+            logger.info("⚠️ No new symbols to look up - all symbols already in portfolio or none found")
+            return ""  # No new stocks to look up
+        
+        # Look up prices for each symbol
+        price_info_lines = []
+        for symbol in sorted(symbols_to_lookup):  # Sort for consistent output
+            logger.info(f"📞 Calling Alpaca API for {symbol}...")
+            try:
+                price = alpaca_trading_service._get_current_price(symbol)
+                logger.info(f"💵 Received price for {symbol}: {price} (type: {type(price)})")
+                
+                if price and price > 0:
+                    price_info_lines.append(f"  • {symbol}: ${price:.2f} (current market price)")
+                    logger.info(f"✅ Looked up real-time price for {symbol}: ${price:.2f}")
+                else:
+                    logger.warning(f"❌ Price for {symbol} failed condition check: price={price}")
+            except Exception as e:
+                logger.error(f"❌ Exception fetching price for {symbol}: {e}")
+                import traceback
+                logger.error(traceback.format_exc())
+                # Don't include symbols we couldn't fetch
+                continue
+        
+        if price_info_lines:
+            result = f"""
+REQUESTED STOCK PRICES (not in portfolio):
+{chr(10).join(price_info_lines)}
+"""
+            logger.info(f"✅ Returning price info for {len(price_info_lines)} symbol(s)")
+            return result
+        
+        logger.info("⚠️ No valid prices found for any symbols")
+        return ""
+    
     def _conversational_analysis_node(self, request: str, portfolio_data: Dict, client_profile: Dict) -> str:
         """Generate dynamic conversational responses using LLM based on user's specific question."""
         try:
@@ -1222,8 +1357,26 @@ Be conversational but precise.
             equity_value = sum(asset.get('market_value', 0) for asset in assets)
             cash_percentage = (cash_balance / total_value * 100) if total_value > 0 else 0
             
+            # Look up requested stock prices (if asking about specific stocks not in portfolio)
+            stock_price_info = self._lookup_stock_prices_from_query(request, assets)
+            
+            # Format sync timestamp
+            synced_at = portfolio_data.get('synced_at', 'Unknown')
+            if synced_at and synced_at != 'Unknown':
+                from datetime import datetime
+                try:
+                    sync_dt = datetime.fromisoformat(synced_at)
+                    synced_at_display = sync_dt.strftime("%B %d, %Y at %I:%M %p")
+                except:
+                    synced_at_display = synced_at
+            else:
+                synced_at_display = "Unknown"
+            
             # Create conversational prompt for LLM
             portfolio_context = f"""
+PORTFOLIO DATA AS OF: {synced_at_display}
+(Portfolio data synced from Alpaca)
+
 PORTFOLIO CONTEXT:
 - Total Portfolio Value: ${total_value:,.2f}
 - Cash Balance: ${cash_balance:,.2f} ({cash_percentage:.1f}%)
@@ -1238,6 +1391,8 @@ COMPLETE HOLDINGS LIST:
 
 CASH POSITION:
   • Cash: ${cash_balance:,.2f} ({cash_percentage:.1f}% of portfolio)
+
+{stock_price_info}
 """
 
             # Use LLM to generate conversational response
@@ -1250,15 +1405,19 @@ CLIENT QUESTION: "{request}"
 
 Provide a conversational, helpful response that:
 1. Directly addresses their specific question
-2. References their actual portfolio holdings from the COMPLETE HOLDINGS LIST above
-3. When asked about specific stocks, check if they own them by reviewing the complete holdings list
-4. Gives personalized advice based on their actual positions
-5. Uses a friendly, professional tone
-6. Keeps response focused and concise (2-3 paragraphs max)
+2. Note the portfolio data timestamp at the top (PORTFOLIO DATA AS OF) - mention it naturally if relevant
+3. References their actual portfolio holdings from the COMPLETE HOLDINGS LIST above
+4. When asked about specific stocks, check if they own them by reviewing the complete holdings list
+5. If asked about stock prices for stocks NOT in their portfolio, use the REQUESTED STOCK PRICES section
+6. Gives personalized advice based on their actual positions
+7. Uses a friendly, professional tone
+8. Keeps response focused and concise (2-3 paragraphs max)
 
 IMPORTANT: 
+- The portfolio was just synced from Alpaca - data is current as of the timestamp shown
 - If asked about a specific stock, ALWAYS check the complete holdings list first before saying they don't own it
 - Use the actual quantities, prices, and allocations from the holdings list
+- If REQUESTED STOCK PRICES section is present, use those real-time prices when discussing those stocks
 - Reference the sector information provided for each holding
 
 FORMATTING GUIDELINES:

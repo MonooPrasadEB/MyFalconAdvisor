@@ -425,20 +425,44 @@ class AlpacaTradingService:
         
         try:
             market_data = self.get_market_data(symbol)
+            logger.info(f"📊 Market data for {symbol}: {market_data}")
+            
             # Check if there's an error first
             if "error" in market_data:
                 logger.warning(f"Could not get price for {symbol}: {market_data['error']}")
                 return 100.0
             
-            # Get latest_price, fallback to None check
+            # Get bid and ask prices to calculate midpoint (most accurate market price)
+            bid_price = market_data.get("bid_price")
+            ask_price = market_data.get("ask_price")
+            
+            # If we have both bid and ask, use midpoint for most accurate price
+            if bid_price is not None and ask_price is not None and bid_price > 0 and ask_price > 0:
+                midpoint = (bid_price + ask_price) / 2
+                logger.info(f"Using bid-ask midpoint for {symbol}: ${midpoint:.2f} (bid: ${bid_price}, ask: ${ask_price})")
+                return float(midpoint)
+            
+            # Fallback 1: Use latest_price if available
             latest_price = market_data.get("latest_price")
-            if latest_price is not None:
-                logger.info(f"Using live quote price for {symbol}: ${latest_price}")
+            if latest_price is not None and latest_price > 0:
+                logger.info(f"Using latest price for {symbol}: ${latest_price}")
                 return float(latest_price)
             
-            # Fallback: try to get close price from latest bar (market closed - using previous close)
+            # Fallback 2: try bid price only
+            if bid_price is not None and bid_price > 0:
+                logger.info(f"Using bid price for {symbol}: ${bid_price}")
+                return float(bid_price)
+            
+            # Fallback 3: try ask price only
+            if ask_price is not None and ask_price > 0:
+                logger.info(f"Using ask price for {symbol}: ${ask_price}")
+                return float(ask_price)
+            
+            # Fallback 3: try to get close price from latest bar (market closed - using previous close)
             latest_bar = market_data.get("latest_bar")
-            if latest_bar and latest_bar.get("close"):
+            logger.info(f"📈 Latest bar for {symbol}: {latest_bar}")
+            
+            if latest_bar and latest_bar.get("close") and latest_bar.get("close") > 0:
                 close_price = float(latest_bar["close"])
                 bar_timestamp = latest_bar.get("timestamp", "unknown")
                 logger.info(f"Market closed for {symbol}, using previous close: ${close_price} (from {bar_timestamp})")

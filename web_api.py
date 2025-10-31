@@ -42,6 +42,7 @@ from myfalconadvisor.core.config import Config
 from myfalconadvisor.tools.database_service import database_service
 from myfalconadvisor.tools.alpaca_trading_service import alpaca_trading_service
 from myfalconadvisor.core.supervisor import investment_advisor_supervisor
+from myfalconadvisor.tools.chat_logger import log_advisor_response
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -441,6 +442,11 @@ async def chat(request: ChatRequest, current_user: dict = Depends(get_current_us
                     "sector": holding.get('sector', 'Other')
                 })
             
+            # Track complete response for logging
+            complete_response = ""
+            session_id = None
+            final_metadata = {}
+            
             # Process the query through the investment advisor supervisor WITH STREAMING
             async for chunk in investment_advisor_supervisor.process_client_request_streaming(
                 request=request.query,
@@ -449,17 +455,24 @@ async def chat(request: ChatRequest, current_user: dict = Depends(get_current_us
                 portfolio_data=supervisor_portfolio_data
             ):
                 if chunk.get("type") == "content":
+                    # Accumulate response content
+                    content = chunk.get("content", "")
+                    complete_response += content
+                    
                     # Stream content chunks - yield dict with event and data
                     yield {
                         "event": "message",
                         "data": json.dumps({
-                            "content": chunk.get("content", ""),
+                            "content": content,
                             "done": False
                         })
                     }
                 elif chunk.get("type") == "final":
                     # Final result with metadata
                     result = chunk.get("result", {})
+                    
+                    # Capture session_id for logging (if available)
+                    session_id = result.get("session_id")
                     
                     # Extract learning suggestions
                     learning_suggestions = []
@@ -489,6 +502,14 @@ async def chat(request: ChatRequest, current_user: dict = Depends(get_current_us
                                     "amount_pct": rec.get("percentage", rec.get("amount", ""))
                                 })
                     
+                    # Store metadata for logging
+                    final_metadata = {
+                        "workflow_complete": result.get("workflow_complete", False),
+                        "has_trade_recommendations": bool(trade_recs),
+                        "compliance_approved": result.get("compliance_approved", False),
+                        "requires_user_approval": result.get("requires_user_approval", False)
+                    }
+                    
                     yield {
                         "event": "final",
                         "data": json.dumps({
@@ -502,6 +523,18 @@ async def chat(request: ChatRequest, current_user: dict = Depends(get_current_us
                             "requires_user_approval": result.get("requires_user_approval", False)
                         })
                     }
+            
+            # Log the complete response to database after streaming completes
+            if session_id and complete_response:
+                try:
+                    log_advisor_response(
+                        complete_response,
+                        session_id=session_id,
+                        metadata=final_metadata
+                    )
+                    logger.info(f"✅ Logged advisor response to session {session_id}")
+                except Exception as log_error:
+                    logger.error(f"Failed to log advisor response: {log_error}")
                     
         except Exception as e:
             logger.error(f"Chat streaming error: {str(e)}")

@@ -170,6 +170,7 @@ def main():
         ("test_portfolio_sync_integrity.py", "Portfolio Sync Integrity"),
         ("test_ai_agents.py", "AI Agents"),
         ("test_compliance_reviewer.py", "Compliance Reviewer"),
+        ("test_trade_execution_compliance.py", "Trade Execution & Compliance"),
         ("test_chat_simple.py", "Chat System")
     ]
     

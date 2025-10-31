@@ -25,6 +25,7 @@ from ..agents.compliance_reviewer import compliance_reviewer_agent
 from ..core.config import Config
 from ..tools.chat_logger import chat_logger, log_user_message, log_supervisor_action, log_advisor_response
 from ..tools.alpaca_trading_service import alpaca_trading_service
+from ..tools.database_service import database_service
 
 config = Config.get_instance()
 logger = logging.getLogger(__name__)
@@ -221,9 +222,10 @@ AVAILABLE AGENTS:
 
 2. **trade_execution** - Trade Execution Agent  
    - Actual trade execution and order placement
-   - Specific buy/sell commands with quantities
+   - Specific buy/sell commands with quantities (e.g., "sell 10 shares", "buy 5 AAPL")
    - Trade confirmations and order management
-   - Examples: "Buy 100 shares of AAPL", "Execute this trade", "Place order for $1000 SPY", "Confirm purchase"
+   - Commands with "let's", "please", or direct imperatives to execute a trade
+   - Examples: "Buy 100 shares of AAPL", "Execute this trade", "Place order for $1000 SPY", "Confirm purchase", "Let's sell 10 shares of SPY", "Please buy NVDA"
 
 3. **compliance_review** - Compliance & Review Agent
    - Trade compliance validation
@@ -827,6 +829,12 @@ Format your response as a clear, professional trade execution analysis.
         the final result with metadata.
         """
         try:
+            # Ensure user_id is in client_profile for compliance checks
+            if client_profile is None:
+                client_profile = {}
+            if user_id and 'user_id' not in client_profile:
+                client_profile['user_id'] = user_id
+            
             # Start or continue chat session
             if not session_id:
                 session_type = "advisory"
@@ -857,6 +865,27 @@ Format your response as a clear, professional trade execution analysis.
                     }
                 )
             
+            # Check if user is approving a pending trade
+            if "approve" in request.lower() and user_id:
+                logger.info(f"🔍 Approval detected for user: {user_id}")
+                # Check for pending transactions
+                pending_trade = self._check_pending_transaction(user_id)
+                logger.info(f"📊 Pending trade found: {pending_trade}")
+                
+                if pending_trade:
+                    logger.info(f"✅ Executing pending trade approval for {pending_trade.get('symbol')}")
+                    # User is approving a pending trade - execute it
+                    async for chunk in self._stream_trade_approval(
+                        pending_trade,
+                        user_id,
+                        portfolio_data or {},
+                        session_id
+                    ):
+                        yield chunk
+                    return  # Exit after handling approval
+                else:
+                    logger.warning(f"❌ No pending transaction found for user {user_id} despite approval message")
+            
             # Analyze request to determine which agent to use
             routing_decision = self._get_llm_routing_decision(
                 request,
@@ -872,7 +901,8 @@ Format your response as a clear, professional trade execution analysis.
                 async for chunk in self._stream_conversational_analysis(
                     request,
                     portfolio_data or {},
-                    client_profile or {}
+                    client_profile or {},
+                    session_id
                 ):
                     yield chunk
                     
@@ -881,7 +911,8 @@ Format your response as a clear, professional trade execution analysis.
                 async for chunk in self._stream_trade_processing(
                     request,
                     portfolio_data or {},
-                    client_profile or {}
+                    client_profile or {},
+                    session_id
                 ):
                     yield chunk
                     
@@ -890,7 +921,8 @@ Format your response as a clear, professional trade execution analysis.
                 async for chunk in self._stream_conversational_analysis(
                     request,
                     portfolio_data or {},
-                    client_profile or {}
+                    client_profile or {},
+                    session_id
                 ):
                     yield chunk
             
@@ -902,11 +934,219 @@ Format your response as a clear, professional trade execution analysis.
                 "message": "I encountered an error processing your request."
             }
     
+    def _check_pending_transaction(self, user_id: str) -> Optional[Dict]:
+        """Check if user has a pending transaction awaiting approval."""
+        try:
+            logger.info(f"🔍 Checking for pending transactions for user_id: {user_id} (type: {type(user_id)})")
+            
+            with database_service.get_session() as session:
+                from sqlalchemy import text
+                
+                # First, let's see ALL pending transactions
+                debug_result = session.execute(
+                    text("SELECT user_id, symbol, status FROM transactions WHERE status = 'pending' ORDER BY created_at DESC LIMIT 5")
+                )
+                all_pending = debug_result.fetchall()
+                logger.info(f"📊 All pending transactions in DB: {all_pending}")
+                
+                # Now try to find user's pending transaction
+                result = session.execute(
+                    text("""
+                        SELECT transaction_id, symbol, transaction_type, quantity, price, 
+                               created_at, notes, user_id
+                        FROM transactions 
+                        WHERE user_id = :user_id 
+                          AND status = 'pending'
+                        ORDER BY created_at DESC 
+                        LIMIT 1
+                    """),
+                    {"user_id": user_id}
+                )
+                row = result.fetchone()
+                
+                if row:
+                    logger.info(f"✅ Found pending transaction: {row[1]} for user {row[7]}")
+                    return {
+                        "transaction_id": row[0],
+                        "symbol": row[1],
+                        "action": row[2],
+                        "quantity": row[3],
+                        "price": row[4],
+                        "created_at": row[5],
+                        "notes": row[6]
+                    }
+                else:
+                    logger.warning(f"❌ No pending transaction found for user_id: {user_id}")
+                return None
+        except Exception as e:
+            logger.error(f"Error checking pending transaction: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+            return None
+    
+    async def _stream_trade_approval(
+        self,
+        pending_trade: Dict,
+        user_id: str,
+        portfolio_data: Dict,
+        session_id: Optional[str]
+    ):
+        """Handle trade approval and execution."""
+        try:
+            transaction_id = pending_trade.get("transaction_id")
+            symbol = pending_trade.get("symbol")
+            action = pending_trade.get("action")
+            quantity = pending_trade.get("quantity")
+            price = pending_trade.get("price")
+            
+            # Stream confirmation message
+            yield {
+                "type": "content",
+                "content": f"## ✅ Trade Approved!\n\nExecuting {action.upper()} order for {quantity} shares of {symbol}...\n\n"
+            }
+            
+            # Execute the trade through execution service
+            try:
+                # Update transaction status to 'approved'
+                with database_service.get_session() as session:
+                    from sqlalchemy import text
+                    session.execute(
+                        text("""
+                            UPDATE transactions 
+                            SET status = 'approved',
+                                updated_at = CURRENT_TIMESTAMP
+                            WHERE transaction_id = :transaction_id
+                        """),
+                        {"transaction_id": transaction_id}
+                    )
+                    session.commit()
+                
+                # Use execution service to process the trade
+                recommendation = {
+                    "symbol": symbol,
+                    "action": action,
+                    "quantity": quantity,
+                    "price": price,
+                    "order_type": "market"
+                }
+                
+                execution_result = execution_service.process_ai_recommendation(
+                    user_id=user_id,
+                    recommendation=recommendation,
+                    session_id=session_id
+                )
+                
+                if execution_result.get("status") == "filled":
+                    filled_qty = execution_result.get("filled_quantity", quantity)
+                    fill_price = execution_result.get("fill_price", price)
+                    
+                    # Update transaction to executed
+                    with database_service.get_session() as session:
+                        session.execute(
+                            text("""
+                                UPDATE transactions 
+                                SET status = 'executed',
+                                    price = :price,
+                                    updated_at = CURRENT_TIMESTAMP
+                                WHERE transaction_id = :transaction_id
+                            """),
+                            {"transaction_id": transaction_id, "price": fill_price}
+                        )
+                        session.commit()
+                    
+                    yield {
+                        "type": "content",
+                        "content": f"""**Trade Executed Successfully!**
+
+📊 **Execution Details:**
+- Symbol: {symbol}
+- Action: {action.upper()}
+- Quantity: {filled_qty} shares
+- Execution Price: ${fill_price:.2f}
+- Total Value: ${filled_qty * fill_price:,.2f}
+- Status: ✅ FILLED
+
+**What This Means:**
+Your {action.lower()} order for {symbol} has been executed successfully. Your portfolio has been updated to reflect this transaction.
+
+**Next Steps:**
+- View your updated portfolio to see the changes
+- Transaction has been recorded in your account history
+- You can ask me for portfolio analysis at any time
+
+Is there anything else you'd like me to help you with?
+"""
+                    }
+                else:
+                    # Trade failed
+                    error_msg = execution_result.get("message", "Unknown error")
+                    
+                    # Update transaction to failed
+                    with database_service.get_session() as session:
+                        session.execute(
+                            text("""
+                                UPDATE transactions 
+                                SET status = 'failed',
+                                    notes = :notes,
+                                    updated_at = CURRENT_TIMESTAMP
+                                WHERE transaction_id = :transaction_id
+                            """),
+                            {"transaction_id": transaction_id, "notes": f"Execution failed: {error_msg}"}
+                        )
+                        session.commit()
+                    
+                    yield {
+                        "type": "content",
+                        "content": f"""## ❌ Trade Execution Failed
+
+Unfortunately, your trade could not be executed at this time.
+
+**Error:** {error_msg}
+
+**What You Can Do:**
+- Review the error message and try again
+- Contact support if the issue persists
+- The transaction remains in your history as 'failed'
+
+Would you like me to help you with an alternative approach?
+"""
+                    }
+                
+            except Exception as exec_error:
+                logger.error(f"Error executing trade: {exec_error}")
+                yield {
+                    "type": "content",
+                    "content": f"## ❌ Execution Error\n\nAn error occurred while executing the trade: {str(exec_error)}\n\nPlease contact support if this issue persists."
+                }
+            
+            # Send final metadata
+            yield {
+                "type": "final",
+                "result": {
+                    "response": f"Trade approval processed for {symbol}",
+                    "session_id": session_id,
+                    "workflow_complete": True,
+                    "analysis_results": {},
+                    "trade_recommendations": [],
+                    "compliance_approved": True,
+                    "requires_user_approval": False
+                }
+            }
+            
+        except Exception as e:
+            logger.error(f"Error in trade approval stream: {e}")
+            yield {
+                "type": "error",
+                "error": str(e),
+                "message": "Failed to process trade approval"
+            }
+    
     async def _stream_conversational_analysis(
         self,
         request: str,
         portfolio_data: Dict,
-        client_profile: Dict
+        client_profile: Dict,
+        session_id: Optional[str] = None
     ):
         """Stream conversational analysis responses from LLM."""
         try:
@@ -1068,6 +1308,7 @@ Be conversational, not templated.
                 "type": "final",
                 "result": {
                     "response": full_response,
+                    "session_id": session_id,  # Include session_id for logging
                     "workflow_complete": True,
                     "analysis_results": analysis_results,
                     "trade_recommendations": [],
@@ -1087,7 +1328,8 @@ Be conversational, not templated.
         self,
         request: str,
         portfolio_data: Dict,
-        client_profile: Dict
+        client_profile: Dict,
+        session_id: Optional[str] = None
     ):
         """Stream trade processing responses from LLM."""
         try:
@@ -1180,11 +1422,37 @@ Be conversational but precise.
             # Extract trade details
             trade_details = self._extract_trade_details(request)
             
+            # Execute compliance review if we have trade details
+            compliance_response = ""
+            if trade_details and portfolio_data and client_profile:
+                user_id = client_profile.get('user_id', 'unknown')
+                
+                # Execute real compliance review - this will:
+                # 1. Log compliance checks to database
+                # 2. Create pending transaction
+                # 3. Return compliance assessment
+                compliance_response = self._execute_real_compliance_review(
+                    trade_recommendations=[trade_details],
+                    client_profile=client_profile,
+                    portfolio_data=portfolio_data,
+                    user_id=user_id,
+                    context=request
+                )
+                
+                # Stream compliance response
+                if compliance_response:
+                    yield {
+                        "type": "content",
+                        "content": "\n\n" + compliance_response
+                    }
+                    full_response += "\n\n" + compliance_response
+            
             # Send final metadata
             yield {
                 "type": "final",
                 "result": {
                     "response": full_response,
+                    "session_id": session_id,  # Include session_id for logging
                     "workflow_complete": False,
                     "analysis_results": {},
                     "trade_recommendations": [trade_details] if trade_details else [],

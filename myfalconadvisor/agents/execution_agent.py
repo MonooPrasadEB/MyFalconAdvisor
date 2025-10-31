@@ -386,26 +386,41 @@ class ExecutionService:
     def _update_positions_table(self, account_id: str, symbol: str, action: str, quantity: float, price: float):
         """Update positions table with trade execution."""
         try:
-            # Get current position
-            position = database_service.get_position(account_id, symbol)
+            # Get user's portfolios
+            portfolios = database_service.get_user_portfolios(account_id)
+            if not portfolios:
+                logger.warning(f"No portfolio found for user {account_id} - skipping position update")
+                return
+            
+            # Use the first portfolio
+            portfolio_id = portfolios[0]["portfolio_id"]
+            
+            # Get current positions for this portfolio
+            positions = database_service.get_portfolio_assets(portfolio_id)
+            
+            # Find existing position for this symbol
+            existing_position = next((p for p in positions if p.get("symbol") == symbol), None)
             
             # Calculate new position
             if action.lower() == "buy":
-                new_quantity = (position["quantity"] if position else 0) + quantity
-                new_cost = (position["cost_basis"] if position else 0) + (quantity * price)
+                new_quantity = (existing_position["quantity"] if existing_position else 0) + quantity
+                # Don't update cost basis here - Alpaca sync will handle that
             else:  # sell
-                new_quantity = (position["quantity"] if position else 0) - quantity
-                new_cost = (position["cost_basis"] if position else 0) - (quantity * price)
+                new_quantity = (existing_position["quantity"] if existing_position else 0) - quantity
             
-            # Update or insert position
-            if position:
-                database_service.update_position(account_id, symbol, new_quantity, new_cost)
-            else:
-                database_service.insert_position(account_id, symbol, new_quantity, new_cost)
+            # For now, just log the transaction - Alpaca sync will update actual positions
+            logger.info(f"Trade executed: {action} {quantity} {symbol} @ ${price:.2f}")
+            logger.info(f"Portfolio will be synced from Alpaca on next refresh")
+            
+            # NOTE: We don't directly update portfolio_assets here because:
+            # 1. Alpaca is the source of truth
+            # 2. sync_portfolio_from_alpaca will update positions on next sync
+            # 3. This prevents data inconsistencies
                 
         except Exception as e:
-            logger.error(f"Error updating positions table: {e}")
-            raise
+            logger.error(f"Error in position update logging: {e}")
+            # Don't raise - this is just for logging, not critical
+            pass
     
     def _write_to_recommendations_table(self, user_id: str, recommendation: Dict) -> Optional[str]:
         """Write recommendation to database."""

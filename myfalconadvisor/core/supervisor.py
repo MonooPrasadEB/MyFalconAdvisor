@@ -1357,6 +1357,7 @@ REQUESTED STOCK PRICES (not in portfolio):
             equity_value = sum(asset.get('market_value', 0) for asset in assets)
             cash_percentage = (cash_balance / total_value * 100) if total_value > 0 else 0
             
+<<<<<<< Updated upstream
             # Look up requested stock prices (if asking about specific stocks not in portfolio)
             stock_price_info = self._lookup_stock_prices_from_query(request, assets)
             
@@ -1372,6 +1373,8 @@ REQUESTED STOCK PRICES (not in portfolio):
             else:
                 synced_at_display = "Unknown"
             
+=======
+>>>>>>> Stashed changes
             # Create conversational prompt for LLM
             portfolio_context = f"""
 PORTFOLIO DATA AS OF: {synced_at_display}
@@ -1391,8 +1394,11 @@ COMPLETE HOLDINGS LIST:
 
 CASH POSITION:
   • Cash: ${cash_balance:,.2f} ({cash_percentage:.1f}% of portfolio)
+<<<<<<< Updated upstream
 
 {stock_price_info}
+=======
+>>>>>>> Stashed changes
 """
 
             # Use LLM to generate conversational response

@@ -18,7 +18,11 @@ from alpaca.trading.requests import (
 )
 from alpaca.trading.enums import OrderSide, TimeInForce, OrderType, AssetClass
 from alpaca.data.historical import StockHistoricalDataClient
-from alpaca.data.requests import StockLatestQuoteRequest, StockBarsRequest
+from alpaca.data.requests import (
+    StockLatestQuoteRequest,
+    StockLatestTradeRequest,
+    StockBarsRequest
+)
 from alpaca.data.timeframe import TimeFrame
 
 from ..core.config import Config
@@ -374,9 +378,12 @@ class AlpacaTradingService:
             return {"error": "Market data not available in mock mode"}
         
         try:
-            # Get latest quote
+            # Get latest quote (bid/ask) and trade (last executed price)
             quote_request = StockLatestQuoteRequest(symbol_or_symbols=symbol)
             quotes = self.data_client.get_stock_latest_quote(quote_request)
+            
+            trade_request = StockLatestTradeRequest(symbol_or_symbols=symbol)
+            trades = self.data_client.get_stock_latest_trade(trade_request)
             
             # Get historical bars
             bars_request = StockBarsRequest(
@@ -387,6 +394,7 @@ class AlpacaTradingService:
             bars = self.data_client.get_stock_bars(bars_request)
             
             latest_quote = quotes[symbol] if symbol in quotes else None
+            latest_trade = trades[symbol] if symbol in trades else None
             symbol_bars = bars[symbol] if symbol in bars else []
             
             return {
@@ -394,6 +402,8 @@ class AlpacaTradingService:
                 "latest_price": float(latest_quote.ask_price) if latest_quote else None,
                 "bid_price": float(latest_quote.bid_price) if latest_quote else None,
                 "ask_price": float(latest_quote.ask_price) if latest_quote else None,
+                "last_trade_price": float(latest_trade.price) if latest_trade and latest_trade.price else None,
+                "last_trade_timestamp": latest_trade.timestamp.isoformat() if latest_trade and latest_trade.timestamp else None,
                 "timestamp": latest_quote.timestamp.isoformat() if latest_quote else None,
                 "bars_count": len(symbol_bars),
                 "latest_bar": {
@@ -432,6 +442,16 @@ class AlpacaTradingService:
                 logger.warning(f"Could not get price for {symbol}: {market_data['error']}")
                 return 100.0
             
+            # Prefer the actual last trade price when available
+            last_trade_price = market_data.get("last_trade_price")
+            if last_trade_price is not None and last_trade_price > 0:
+                logger.info(
+                    f"Using last trade price for {symbol}: ${last_trade_price} "
+                    f"(timestamp: {market_data.get('last_trade_timestamp')})"
+                )
+                return float(last_trade_price)
+            
+            # Otherwise, fall back to bid/ask midpoint
             # Get bid and ask prices to calculate midpoint (most accurate market price)
             bid_price = market_data.get("bid_price")
             ask_price = market_data.get("ask_price")

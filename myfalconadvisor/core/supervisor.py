@@ -1150,6 +1150,23 @@ Would you like me to help you with an alternative approach?
     ):
         """Stream conversational analysis responses from LLM."""
         try:
+            # Retrieve session history if session_id is provided
+            conversation_history = []
+            if session_id:
+                try:
+                    session_messages = chat_logger.get_session_history(session_id, limit=20)
+                    # Convert to HumanMessage/AIMessage format for context
+                    for msg in session_messages:
+                        agent_type = msg.get('agent_type', '')
+                        content = msg.get('message_content', '')
+                        if agent_type == 'user':
+                            conversation_history.append(HumanMessage(content=content))
+                        elif agent_type in ['advisor', 'supervisor']:
+                            conversation_history.append(AIMessage(content=content))
+                    logger.info(f"Retrieved {len(conversation_history)} previous messages from session {session_id}")
+                except Exception as e:
+                    logger.warning(f"Could not retrieve session history: {e}")
+            
             # Build portfolio context (same as non-streaming version)
             assets = portfolio_data.get('assets', [])
             if not assets:
@@ -1227,11 +1244,24 @@ CASH POSITION:
 {stock_price_info}
 """
             
+            # Build conversation context from history
+            conversation_context = ""
+            if conversation_history:
+                # Include recent conversation history (last 10 messages to avoid token limits)
+                recent_history = conversation_history[-10:]
+                conversation_context = "\n\nRECENT CONVERSATION HISTORY:\n"
+                for msg in recent_history:
+                    if isinstance(msg, HumanMessage):
+                        conversation_context += f"Client: {msg.content}\n"
+                    elif isinstance(msg, AIMessage):
+                        conversation_context += f"Advisor: {msg.content}\n"
+            
             # Create streaming prompt
             prompt = ChatPromptTemplate.from_template("""
 You are an experienced investment advisor having a conversation with a client about their portfolio.
 
 {portfolio_context}
+{conversation_context}
 
 CLIENT QUESTION: "{request}"
 
@@ -1268,6 +1298,7 @@ Be conversational, not templated.
             
             async for chunk in chain.astream({
                 "portfolio_context": portfolio_context,
+                "conversation_context": conversation_context,
                 "request": request
             }):
                 content = chunk.content if hasattr(chunk, 'content') else str(chunk)

@@ -85,6 +85,7 @@ async def shutdown_event():
 class ChatRequest(BaseModel):
     query: str = Field(..., description="User's investment question or request")
     user_id: Optional[str] = Field(None, description="User ID for personalization")
+    session_id: Optional[str] = Field(None, description="Chat session ID for conversation continuity")
 
 class LoginRequest(BaseModel):
     email: str = Field(..., description="User email")
@@ -444,7 +445,7 @@ async def chat(request: ChatRequest, current_user: dict = Depends(get_current_us
             
             # Track complete response for logging
             complete_response = ""
-            session_id = None
+            session_id = request.session_id  # Use session_id from request if provided
             final_metadata = {}
             
             # Process the query through the investment advisor supervisor WITH STREAMING
@@ -452,7 +453,8 @@ async def chat(request: ChatRequest, current_user: dict = Depends(get_current_us
                 request=request.query,
                 user_id=user_id,
                 client_profile=client_profile,
-                portfolio_data=supervisor_portfolio_data
+                portfolio_data=supervisor_portfolio_data,
+                session_id=session_id
             ):
                 if chunk.get("type") == "content":
                     # Accumulate response content
@@ -510,10 +512,15 @@ async def chat(request: ChatRequest, current_user: dict = Depends(get_current_us
                         "requires_user_approval": result.get("requires_user_approval", False)
                     }
                     
+                    # Update session_id from result if available (new session created)
+                    if result.get("session_id") and not session_id:
+                        session_id = result.get("session_id")
+                    
                     yield {
                         "event": "final",
                         "data": json.dumps({
                             "advisor_reply": result.get("response", ""),
+                            "session_id": session_id,  # Return session_id to frontend
                             "compliance_checked": True,
                             "compliance_notes": ["Investment advice is for educational purposes only"],
                             "suggested_actions": suggested_actions,

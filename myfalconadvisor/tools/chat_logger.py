@@ -271,18 +271,25 @@ class PostgreSQLChatLogger:
     def get_session_history(self, session_id: str, limit: int = 50) -> List[Dict[str, Any]]:
         """Get chat history for a session"""
         try:
-            sql = f"""
+            sql = """
             SELECT 
                 message_id, agent_type, message_type, message_content,
                 message_metadata, tokens_used, processing_time_ms, created_at
             FROM ai_messages 
-            WHERE session_id = '{session_id}'
+            WHERE session_id = :session_id
             ORDER BY created_at ASC
-            LIMIT {limit};
+            LIMIT :limit
             """
             
-            result = self._execute_sql(sql, return_result=True)
-            return result or []
+            params = {
+                "session_id": session_id,
+                "limit": limit
+            }
+            
+            result = self._execute_sql_with_params(sql, params)
+            if isinstance(result, list):
+                return result
+            return []
             
         except Exception as e:
             logger.error(f"Error getting session history: {e}")

@@ -10,7 +10,16 @@ export default function ChatUI({ API_BASE, user, onNavigateToLearning }) {
   const [input, setInput] = useState('')
   const [isTyping, setIsTyping] = useState(false)
   const [isInitialLoad, setIsInitialLoad] = useState(true)
+  const [sessionId, setSessionId] = useState(null)
   const messagesEndRef = useRef(null)
+  
+  // Load session_id from localStorage on mount
+  useEffect(() => {
+    const savedSessionId = localStorage.getItem('chat_session_id')
+    if (savedSessionId) {
+      setSessionId(savedSessionId)
+    }
+  }, [])
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
@@ -120,7 +129,10 @@ export default function ChatUI({ API_BASE, user, onNavigateToLearning }) {
           'Authorization': `Bearer ${token}`,
           'Accept': 'text/event-stream'
         },
-        body: JSON.stringify({ query: userMsg.content })
+        body: JSON.stringify({ 
+          query: userMsg.content,
+          session_id: sessionId  // Include session_id if available
+        })
       })
       
       if (!response.ok) {
@@ -195,6 +207,12 @@ export default function ChatUI({ API_BASE, user, onNavigateToLearning }) {
                   return newMessages
                 })
               } else if (currentEvent === 'final' && data) {
+                // Store session_id if provided
+                if (data.session_id && data.session_id !== sessionId) {
+                  setSessionId(data.session_id)
+                  localStorage.setItem('chat_session_id', data.session_id)
+                }
+                
                 // Final message with metadata
                 setMessages(prev => {
                   const newMessages = [...prev]

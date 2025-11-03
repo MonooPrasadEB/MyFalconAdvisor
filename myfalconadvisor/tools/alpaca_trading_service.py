@@ -16,7 +16,7 @@ from alpaca.trading.requests import (
     MarketOrderRequest, LimitOrderRequest, StopOrderRequest,
     GetAssetsRequest, GetOrdersRequest
 )
-from alpaca.trading.enums import OrderSide, TimeInForce, OrderType, AssetClass
+from alpaca.trading.enums import OrderSide, TimeInForce, OrderType, AssetClass, AssetStatus
 from alpaca.data.historical import StockHistoricalDataClient
 from alpaca.data.requests import (
     StockLatestQuoteRequest,
@@ -419,6 +419,56 @@ class AlpacaTradingService:
         except Exception as e:
             logger.error(f"Failed to get market data for {symbol}: {e}")
             return {"error": str(e)}
+    
+    def resolve_symbol(self, query: str) -> Optional[str]:
+        """
+        Resolve a user-provided company or ticker string to a valid stock symbol.
+        
+        Args:
+            query: Raw user input (ticker, company name, abbreviation)
+        
+        Returns:
+            Uppercase ticker symbol if resolved, otherwise None
+        """
+        if not query:
+            return None
+        
+        candidate = query.strip().upper().replace(" ", "")
+        # If it already looks like a ticker (1-5 letters, no spaces), use it
+        if candidate.isalpha() and 1 <= len(candidate) <= 5:
+            return candidate
+        
+        # Handle common manual mappings for mock mode or quick lookups
+        manual_map = {
+            "NUTANIX": "NTNX",
+            "ALPHABET": "GOOGL",
+            "GOOGLE": "GOOGL",
+            "TESLA": "TSLA",
+            "APPLE": "AAPL",
+            "MICROSOFT": "MSFT",
+            "PAYPAL": "PYPL"
+        }
+        
+        manual_key = query.strip().upper()
+        if manual_key in manual_map:
+            return manual_map[manual_key]
+        
+        if self.mock_mode or not self.trading_client:
+            return None
+        
+        try:
+            asset_request = GetAssetsRequest(
+                status=AssetStatus.ACTIVE,
+                asset_class=AssetClass.US_EQUITY,
+                search=query.strip()
+            )
+            assets = self.trading_client.get_all_assets(asset_request)
+            if assets:
+                return assets[0].symbol.upper()
+        except Exception as e:
+            logger.warning(f"Symbol resolution failed for '{query}': {e}")
+        
+        return None
     
     def _get_current_price(self, symbol: str) -> float:
         """Get current price for a symbol (helper method)."""

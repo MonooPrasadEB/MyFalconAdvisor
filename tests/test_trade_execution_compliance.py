@@ -19,6 +19,7 @@ if str(project_root) not in sys.path:
 from myfalconadvisor.core.supervisor import investment_advisor_supervisor
 from myfalconadvisor.agents.execution_agent import execution_service
 from myfalconadvisor.tools.database_service import database_service
+from myfalconadvisor.tools.alpaca_trading_service import alpaca_trading_service
 
 
 class _FakeResult:
@@ -79,6 +80,8 @@ class _UpdateSession:
             self._log_store.append(("approved", params))
         elif "SET status = 'executed'" in sql:
             self._log_store.append(("executed", params))
+        elif "SET status = 'rejected'" in sql:
+            self._log_store.append(("rejected", params))
         else:
             self._log_store.append(("other", params))
         return None
@@ -295,6 +298,133 @@ def test_stream_trade_approval_executes_successfully():
     return passed
 
 
+def test_stream_trade_approval_rejected_status():
+    """Ensure rejected executions update transactions and return rejection message."""
+    print("\n🧪 Test: Trade approval rejection path")
+    supervisor = investment_advisor_supervisor
+
+    pending_trade = {
+        "transaction_id": "txn-999",
+        "symbol": "QQQ",
+        "action": "buy",
+        "quantity": 100,
+        "price": 500.00
+    }
+
+    call_log: List[Tuple[str, dict]] = []
+
+    def fake_get_session():
+        return _UpdateSession(call_log)
+
+    mock_execution_result = {
+        "status": "rejected",
+        "message": "Insufficient cash balance"
+    }
+
+    async def _collect_chunks():
+        chunks = []
+        async for chunk in supervisor._stream_trade_approval(
+            pending_trade,
+            user_id="user-123",
+            portfolio_data={"assets": []},
+            session_id="sess-999"
+        ):
+            chunks.append(chunk)
+        return chunks
+
+    with patch.object(database_service, "get_session", side_effect=fake_get_session), patch.object(
+        execution_service,
+        "process_ai_recommendation",
+        return_value=mock_execution_result
+    ) as exec_mock:
+        chunks = asyncio.run(_collect_chunks())
+
+    rejection_chunk = next((c for c in chunks if c["type"] == "content" and "Trade Rejected" in c["content"]), None)
+    final_chunk = chunks[-1]
+
+    rejected_updates = [entry for entry in call_log if entry[0] == "rejected"]
+
+    passed = (
+        rejection_chunk is not None
+        and len(rejected_updates) == 1
+        and rejected_updates[0][1].get("transaction_id") == "txn-999"
+        and "Insufficient cash balance" in rejected_updates[0][1].get("notes", "")
+        and final_chunk["type"] == "final"
+        and exec_mock.called
+    )
+
+    print("✅ Trade rejection handled" if passed else "❌ Trade rejection handling failed")
+    return passed
+
+
+def test_symbol_normalization_for_compliance_review():
+    """Verify companies resolve to tickers before logging transactions."""
+    print("\n🧪 Test: Symbol normalization in compliance review")
+    supervisor = investment_advisor_supervisor
+
+    trade = {
+        "symbol": "Nutanix",
+        "action": "buy",
+        "quantity": 10,
+        "price": 70.25,
+        "order_type": "market"
+    }
+
+    client_profile = {"risk_tolerance": "moderate", "user_id": "user-abc"}
+    portfolio_data = {"total_value": 100000, "holdings": []}
+
+    original_review = supervisor.compliance_reviewer.review_investment_recommendation
+
+    with patch.object(
+        supervisor.compliance_reviewer,
+        "review_investment_recommendation",
+        wraps=original_review
+    ) as review_mock, patch.object(
+        alpaca_trading_service,
+        "resolve_symbol",
+        return_value="NTNX"
+    ) as resolve_mock, patch.object(
+        alpaca_trading_service,
+        "_get_current_price",
+        return_value=70.25
+    ), patch.object(
+        database_service,
+        "insert_compliance_check",
+        return_value=True
+    ), patch.object(
+        database_service,
+        "create_pending_transaction",
+        return_value="txn-mock"
+    ) as create_txn_mock:
+        result = supervisor._execute_real_compliance_review(
+            trade_recommendations=[trade],
+            client_profile=client_profile,
+            portfolio_data=portfolio_data,
+            user_id="user-abc",
+            context="Buy Nutanix shares"
+        )
+
+    if create_txn_mock.called:
+        print("create_pending_transaction call args:", create_txn_mock.call_args)
+
+    resolved_called = resolve_mock.called
+    txn_called = create_txn_mock.called
+    normalized_symbol = create_txn_mock.call_args.kwargs.get("symbol") if txn_called else None
+    response_has_ntnx = "NTNX" in result
+    review_called = review_mock.called
+
+    print(f"resolve_mock.called={resolved_called}")
+    print(f"create_pending_transaction.called={txn_called}")
+    print(f"normalized symbol passed={normalized_symbol}")
+    print(f"response contains NTNX={response_has_ntnx}")
+    print(f"review_mock.called={review_called}")
+
+    passed = resolved_called and txn_called and normalized_symbol == "NTNX" and response_has_ntnx and review_called
+
+    print("✅ Symbol normalization works" if passed else "❌ Symbol normalization failed")
+    return passed
+
+
 def main():
     """Run trade execution & compliance tests and report score."""
     tests = [
@@ -302,6 +432,8 @@ def main():
         ("Compliance review with warnings", test_compliance_review_runs_with_moderate_warning),
         ("Pending transaction lookup", test_pending_transaction_lookup_returns_latest),
         ("Trade approval streaming", test_stream_trade_approval_executes_successfully),
+        ("Trade approval rejection handling", test_stream_trade_approval_rejected_status),
+        ("Symbol normalization", test_symbol_normalization_for_compliance_review),
     ]
 
     results = []

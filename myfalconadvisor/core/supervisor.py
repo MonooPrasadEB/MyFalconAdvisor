@@ -1036,7 +1036,9 @@ Format your response as a clear, professional trade execution analysis.
                     session_id=session_id
                 )
                 
-                if execution_result.get("status") == "filled":
+                exec_status = (execution_result.get("status") or "").lower()
+                
+                if exec_status == "filled":
                     filled_qty = execution_result.get("filled_quantity", quantity)
                     fill_price = execution_result.get("fill_price", price)
                     
@@ -1077,11 +1079,40 @@ Your {action.lower()} order for {symbol} has been executed successfully. Your po
 Is there anything else you'd like me to help you with?
 """
                     }
+                elif exec_status == "rejected":
+                    error_msg = execution_result.get("message", "Trade was rejected by validation checks")
+                    
+                    with database_service.get_session() as session:
+                        session.execute(
+                            text("""
+                                UPDATE transactions 
+                                SET status = 'rejected',
+                                    notes = :notes,
+                                    updated_at = CURRENT_TIMESTAMP
+                                WHERE transaction_id = :transaction_id
+                            """),
+                            {"transaction_id": transaction_id, "notes": f"Execution rejected: {error_msg}"}
+                        )
+                        session.commit()
+                    
+                    yield {
+                        "type": "content",
+                        "content": f"""## ⚠️ Trade Rejected
+
+Your trade request for {symbol} could not be executed.
+
+**Reason:** {error_msg}
+
+**Next Steps:**
+- Adjust the order details (e.g., shares, cash balance) and try again
+- Ask for help evaluating alternative trades
+
+The pending transaction has been marked as `rejected` with this reason."""
+                    }
                 else:
-                    # Trade failed
+                    # Trade failed for other reasons
                     error_msg = execution_result.get("message", "Unknown error")
                     
-                    # Update transaction to failed
                     with database_service.get_session() as session:
                         session.execute(
                             text("""
@@ -1525,7 +1556,11 @@ Be conversational but precise.
         logger.info(f"🔍 Attempting to extract ticker symbols from query: '{query}'")
         
         # Get list of symbols already in portfolio
-        portfolio_symbols = {asset.get('symbol', '').upper() for asset in portfolio_assets}
+        portfolio_symbols = set()
+        for asset in portfolio_assets:
+            asset_symbol = asset.get('symbol', '')
+            normalized_asset_symbol = alpaca_trading_service.resolve_symbol(asset_symbol) or asset_symbol
+            portfolio_symbols.add(normalized_asset_symbol.upper())
         logger.info(f"📊 Portfolio already contains: {portfolio_symbols}")
         
         # Use LLM to extract ticker symbols from the query
@@ -1576,6 +1611,16 @@ Return ONLY a JSON array of uppercase ticker symbols (1-5 letters each), or empt
                 if symbol not in ['I', 'A', 'US', 'USA', 'UK', 'CEO', 'CFO', 'CTO', 'AI', 'ML', 'API', 'FAQ', 'PDF', 'JPG', 'PNG', 'IS', 'IT', 'OR', 'AND', 'THE']:
                     potential_symbols.add(symbol)
             
+            # Additional fallback: look for capitalized company names and attempt resolution
+            for token in re.findall(r'\b[A-Za-z]{2,15}\b', query):
+                upper_token = token.upper()
+                # Skip obvious non-company words
+                if upper_token in ['WHAT', 'IS', 'THE', 'PRICE', 'STOCK', 'OF', 'PLEASE', 'SHOULD', 'BUY', 'SELL', 'HOW', 'MUCH', 'DO', 'HAVE']:
+                    continue
+                resolved = alpaca_trading_service.resolve_symbol(token)
+                if resolved:
+                    potential_symbols.add(resolved.upper())
+            
         except Exception as e:
             logger.error(f"Error in LLM ticker extraction: {e}")
             # Fallback to simple regex
@@ -1585,8 +1630,17 @@ Return ONLY a JSON array of uppercase ticker symbols (1-5 letters each), or empt
                 if symbol not in ['I', 'A', 'US', 'USA', 'UK', 'CEO', 'CFO', 'CTO', 'AI', 'ML', 'API', 'FAQ', 'PDF', 'JPG', 'PNG', 'IS', 'IT', 'OR', 'AND', 'THE']:
                     potential_symbols.add(symbol)
         
+        # Normalize potential symbols using resolver
+        normalized_candidates = set()
+        for sym in potential_symbols:
+            resolved = alpaca_trading_service.resolve_symbol(sym)
+            if resolved:
+                normalized_candidates.add(resolved.upper())
+            else:
+                normalized_candidates.add(sym.upper())
+        
         # Filter out symbols already in portfolio
-        symbols_to_lookup = potential_symbols - portfolio_symbols
+        symbols_to_lookup = normalized_candidates - portfolio_symbols
         
         logger.info(f"💰 Symbols to lookup (not in portfolio): {symbols_to_lookup}")
         
@@ -1767,6 +1821,12 @@ Could you please try rephrasing your question? I'm here to help with any questio
             
             # Process first trade recommendation (can be extended for multiple)
             trade = trade_recommendations[0]
+            raw_symbol = trade.get('symbol', 'UNKNOWN')
+            normalized_symbol = alpaca_trading_service.resolve_symbol(raw_symbol)
+            if normalized_symbol:
+                if normalized_symbol != raw_symbol:
+                    logger.info(f"Normalized trade symbol '{raw_symbol}' -> '{normalized_symbol}'")
+                trade['symbol'] = normalized_symbol
             symbol = trade.get('symbol', 'UNKNOWN')
             action = trade.get('action', 'BUY')
             quantity = trade.get('quantity', 0)

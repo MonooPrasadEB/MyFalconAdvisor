@@ -1007,21 +1007,7 @@ Format your response as a clear, professional trade execution analysis.
             
             # Execute the trade through execution service
             try:
-                # Update transaction status to 'approved'
-                with database_service.get_session() as session:
-                    from sqlalchemy import text
-                    session.execute(
-                        text("""
-                            UPDATE transactions 
-                            SET status = 'approved',
-                                updated_at = CURRENT_TIMESTAMP
-                            WHERE transaction_id = :transaction_id
-                        """),
-                        {"transaction_id": transaction_id}
-                    )
-                    session.commit()
-                
-                # Use execution service to process the trade
+                # Use execution service to process the trade (no intermediate 'approved' status)
                 recommendation = {
                     "symbol": symbol,
                     "action": action,
@@ -2050,6 +2036,27 @@ This recommendation has been prepared in accordance with SEC Investment Advisers
 Reply with "Approve" to execute this trade, or ask questions for clarification.
 """
             else:
+                # Compliance failed - update transaction to 'rejected'
+                transaction_id = review_result.get('transaction_id')
+                if transaction_id:
+                    try:
+                        with database_service.get_session() as session:
+                            from sqlalchemy import text
+                            session.execute(
+                                text("""
+                                    UPDATE transactions 
+                                    SET status = 'rejected',
+                                        notes = CONCAT(COALESCE(notes, ''), '\nCompliance rejected: Score ', :score, '/100'),
+                                        updated_at = CURRENT_TIMESTAMP
+                                    WHERE transaction_id = :transaction_id
+                                """),
+                                {"transaction_id": transaction_id, "score": compliance_score}
+                            )
+                            session.commit()
+                            logger.info(f"Transaction {transaction_id} rejected due to compliance failure (score: {compliance_score})")
+                    except Exception as update_error:
+                        logger.error(f"Failed to update transaction to rejected: {update_error}")
+                
                 issues_list_full = '\n'.join([f"• {issue.get('description', 'Unknown issue')} [{issue.get('severity', 'critical')}]" for issue in issues])
                 
                 return f"""
@@ -2059,12 +2066,13 @@ Reply with "Approve" to execute this trade, or ask questions for clarification.
 
 **Compliance Score:** {compliance_score}/100
 
-**Status:** REQUIRES REVISION
+**Status:** REJECTED
 
 **Critical Issues ({len(issues)}):**
 {issues_list_full}
 
-**Recommendation:** This trade cannot proceed without addressing the compliance issues identified above.
+**Recommendation:** This trade has been rejected and cannot proceed without addressing the compliance issues identified above.
+**Transaction Status:** Marked as 'rejected' in database.
 """
             
         except Exception as e:

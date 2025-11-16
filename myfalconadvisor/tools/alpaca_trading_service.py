@@ -313,11 +313,22 @@ class AlpacaTradingService:
             order = self.trading_client.get_order_by_id(order_id)
             
             # Update transaction status in database if needed
+            # Map Alpaca statuses to our 5-status model: pending, executed, rejected, failed, cancelled
             if order.status in ["filled", "canceled", "rejected"]:
+                # Map Alpaca status to DB status
+                if order.status == "filled":
+                    db_status = "executed"
+                elif order.status == "canceled":
+                    db_status = "cancelled"  # Note: Alpaca uses 'canceled', we use 'cancelled'
+                elif order.status == "rejected":
+                    db_status = "rejected"
+                else:
+                    db_status = "failed"  # Fallback for any other terminal state
+                
                 self.db_service.update_transaction_by_broker_ref(
                     broker_reference=order_id,
                     updates={
-                        "status": "executed" if order.status == "filled" else order.status,
+                        "status": db_status,
                         "execution_date": datetime.utcnow() if order.status == "filled" else None,
                         "price": float(order.filled_avg_price) if order.filled_avg_price else None,
                         "total_amount": float(order.filled_qty) * float(order.filled_avg_price) if order.filled_avg_price and order.filled_qty else None

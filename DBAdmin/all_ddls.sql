@@ -529,7 +529,7 @@ CREATE TABLE public.transactions (
     notes text,
     created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP,
     updated_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT transactions_status_check CHECK (((status)::text = ANY ((ARRAY['pending'::character varying, 'approved'::character varying, 'executed'::character varying, 'cancelled'::character varying, 'failed'::character varying])::text[]))),
+    CONSTRAINT transactions_status_check CHECK (((status)::text = ANY ((ARRAY['pending'::character varying, 'executed'::character varying, 'rejected'::character varying, 'failed'::character varying, 'cancelled'::character varying])::text[]))),
     CONSTRAINT transactions_transaction_type_check CHECK (((transaction_type)::text = ANY ((ARRAY['BUY'::character varying, 'SELL'::character varying, 'DIVIDEND'::character varying, 'SPLIT'::character varying, 'TRANSFER'::character varying])::text[])))
 );
 

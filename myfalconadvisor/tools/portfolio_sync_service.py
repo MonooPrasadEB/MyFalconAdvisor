@@ -197,7 +197,7 @@ class PortfolioSyncService:
                     order_status = self.alpaca_service.get_order_status(order.broker_reference)
                     
                     if order_status.get("status") == "filled":
-                        # Update transaction status
+                        # Update transaction status to 'executed'
                         self._update_transaction_status(
                             order.transaction_id, 
                             "executed",
@@ -208,13 +208,21 @@ class PortfolioSyncService:
                         logger.info(f"📈 Order filled: {order.symbol} {order.transaction_type} {order.quantity} shares")
                         
                     elif order_status.get("status") in ["canceled", "rejected"]:
-                        # Update failed orders
+                        # Map Alpaca status to our 5-status model
+                        alpaca_status = order_status.get("status")
+                        if alpaca_status == "canceled":
+                            db_status = "cancelled"  # Map to our spelling
+                        elif alpaca_status == "rejected":
+                            db_status = "rejected"
+                        else:
+                            db_status = "failed"  # Fallback
+                        
                         self._update_transaction_status(
                             order.transaction_id,
-                            order_status.get("status"),
+                            db_status,
                             order_status
                         )
-                        logger.info(f"❌ Order {order_status.get('status')}: {order.symbol}")
+                        logger.info(f"❌ Order {db_status}: {order.symbol}")
                         
                 except Exception as e:
                     logger.warning(f"Could not check order {order.broker_reference}: {e}")

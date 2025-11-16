@@ -75,10 +75,11 @@ class _UpdateSession:
     def execute(self, statement, params=None):
         sql = str(statement)
         params = params or {}
-        if "SET status = 'approved'" in sql:
-            self._log_store.append(("approved", params))
-        elif "SET status = 'executed'" in sql:
+        # Note: 'approved' status removed in 5-status model
+        if "SET status = 'executed'" in sql:
             self._log_store.append(("executed", params))
+        elif "SET status = 'rejected'" in sql:
+            self._log_store.append(("rejected", params))
         else:
             self._log_store.append(("other", params))
         return None
@@ -277,7 +278,7 @@ def test_stream_trade_approval_executes_successfully():
     success_chunk = next((c for c in chunks if c["type"] == "content" and "Trade Executed Successfully" in c["content"]), None)
     final_chunk = chunks[-1]
 
-    approved_updates = [entry for entry in call_log if entry[0] == "approved"]
+    # Note: 'approved' status removed in 5-status model - transactions go directly from pending to executed
     executed_updates = [entry for entry in call_log if entry[0] == "executed"]
 
     passed = (
@@ -286,7 +287,6 @@ def test_stream_trade_approval_executes_successfully():
         and success_chunk is not None
         and final_chunk["type"] == "final"
         and final_chunk["result"]["workflow_complete"] is True
-        and len(approved_updates) == 1
         and len(executed_updates) == 1
         and exec_mock.called
     )

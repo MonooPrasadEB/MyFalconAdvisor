@@ -435,7 +435,7 @@ export default function ChatUI({ API_BASE, user, onNavigateToLearning }) {
                 <div className="chat-bubble assistant" style={{ background: 'linear-gradient(135deg, var(--primary-50) 0%, var(--blue-50) 100%)' }}>
                   <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                     <span style={{ fontSize: '1.1rem', fontWeight: '600', color: 'var(--primary-700)' }}>
-                      ⚙️ Working...
+                      💭 Thinking...
                     </span>
                     <div style={{ display: 'flex', gap: '4px' }}>
                       <div className="typing-dot-large" style={{ animationDelay: '0ms' }}></div>

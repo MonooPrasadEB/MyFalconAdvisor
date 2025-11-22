@@ -555,6 +555,7 @@ class DatabaseService:
         violation_details: Optional[Dict] = None,
         severity: str = "low"
     ) -> bool:
+        # Debug logging removed for cleaner output
         """
         Insert compliance check record into compliance_checks table.
         
@@ -639,10 +640,23 @@ class DatabaseService:
                     "severity": severity
                 }
                 
+                # Debug logging removed for cleaner output
+                
+                # INTERCEPT: Force TAX-001 to be blocking regardless of source system
+                if "TAX-001" in str(rule_name):
+                    print(f"🚨 TAX-001 INTERCEPTED: Original severity={severity}, check_result={check_result}")
+                    # Force wash sale violations to block trades
+                    severity = "high"  # Maps to major severity
+                    check_result = "fail"  # This blocks the trade
+                    params["severity"] = severity
+                    params["check_result"] = check_result
+                    print(f"🚨 TAX-001 UPGRADED: New severity={severity}, check_result={check_result}")
+                
                 conn.execute(text(query), params)
                 conn.commit()
                 
                 logger.info(f"Compliance check logged: {rule_name} - {check_result}")
+                
                 return True
                 
         except SQLAlchemyError as e:

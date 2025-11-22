@@ -77,13 +77,16 @@ class _UpdateSession:
         sql = str(statement)
         params = params or {}
         # Note: 'approved' status removed in 5-status model
-        if "SET status = 'executed'" in sql:
+        # Handle both direct SQL strings and text() objects
+        sql_lower = sql.lower()
+        if "status = 'executed'" in sql_lower or "status='executed'" in sql_lower:
             self._log_store.append(("executed", params))
-        elif "SET status = 'rejected'" in sql:
+        elif "status = 'rejected'" in sql_lower or "status='rejected'" in sql_lower:
             self._log_store.append(("rejected", params))
         else:
             self._log_store.append(("other", params))
-        return None
+        # Return a mock result object that has the expected interface
+        return _FakeResult()
 
     def commit(self):
         self._log_store.append(("commit", {}))
@@ -275,6 +278,10 @@ def test_stream_trade_approval_executes_successfully():
     ) as exec_mock:
         chunks = asyncio.run(_collect_chunks())
 
+    if not chunks:
+        print("❌ Trade approval stream failed: No chunks returned")
+        return False
+    
     first_chunk = chunks[0]
     success_chunk = next((c for c in chunks if c["type"] == "content" and "Trade Executed Successfully" in c["content"]), None)
     final_chunk = chunks[-1]
@@ -282,17 +289,33 @@ def test_stream_trade_approval_executes_successfully():
     # Note: 'approved' status removed in 5-status model - transactions go directly from pending to executed
     executed_updates = [entry for entry in call_log if entry[0] == "executed"]
 
-    passed = (
-        first_chunk["type"] == "content"
-        and "Trade Approved" in first_chunk["content"]
-        and success_chunk is not None
-        and final_chunk["type"] == "final"
-        and final_chunk["result"]["workflow_complete"] is True
-        and len(executed_updates) == 1
-        and exec_mock.called
-    )
-
-    print("✅ Trade approval stream completed" if passed else "❌ Trade approval stream failed")
+    # Debug: Print chunk types and content previews
+    chunk_types = [c.get("type") for c in chunks]
+    content_chunks = [c.get("content", "")[:50] for c in chunks if c.get("type") == "content"]
+    
+    # Debug output
+    checks = {
+        "first_chunk_type": first_chunk.get("type") == "content",
+        "trade_approved_text": "Trade Approved" in first_chunk.get("content", ""),
+        "success_chunk_found": success_chunk is not None,
+        "final_chunk_type": final_chunk.get("type") == "final",
+        "workflow_complete": final_chunk.get("result", {}).get("workflow_complete") is True,
+        "executed_updates": len(executed_updates) == 1,
+        "exec_mock_called": exec_mock.called
+    }
+    
+    passed = all(checks.values())
+    
+    if not passed:
+        failed_checks = [k for k, v in checks.items() if not v]
+        print(f"❌ Trade approval stream failed: {', '.join(failed_checks)}")
+        print(f"   Chunk types: {chunk_types}")
+        print(f"   Content previews: {content_chunks}")
+        print(f"   Call log entries: {[e[0] for e in call_log]}")
+        print(f"   Exec mock called: {exec_mock.called}")
+    else:
+        print("✅ Trade approval stream completed")
+    
     return passed
 
 

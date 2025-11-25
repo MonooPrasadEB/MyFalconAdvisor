@@ -74,7 +74,7 @@
       "regulation_source": "IRS",
       "rule_name": "Wash Sale Rule Section 1091",
       "description": "Cannot claim loss if repurchasing substantially identical security within 30 days",
-      "severity": "warning",
+      "severity": "major",
       "applies_to": [
         "individual",
         "institutional"

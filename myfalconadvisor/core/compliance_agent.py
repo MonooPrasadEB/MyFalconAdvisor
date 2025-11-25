@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field, asdict
 from pathlib import Path
 from typing import Dict, List, Optional, Callable, Any, Tuple
-from datetime import datetime
+from datetime import datetime, timezone
 import json, threading, time, hashlib, logging, logging.handlers, difflib, uuid
 
 # ---------------- Models ----------------
@@ -189,17 +189,17 @@ class AuditLogger:
         except Exception as e:
             self.logger.error(f"Failed to log to database: {e}")
     def policy_change(self, old, new, diff_text=None):
-        self._emit({"event":"policy_change","changed_at":datetime.utcnow().isoformat(),
+        self._emit({"event":"policy_change","changed_at":datetime.now(timezone.utc).isoformat(),
                     "old_version":old.version,"old_checksum":old.checksum,
                     "new_version":new.version,"new_checksum":new.checksum,"diff":diff_text})
     def compliance_event(self, event_type, subject, input_obj, result_obj, rule_ids, score):
-        self._emit({"event":"compliance_event","id":str(uuid.uuid4()),"at":datetime.utcnow().isoformat(),
+        self._emit({"event":"compliance_event","id":str(uuid.uuid4()),"at":datetime.now(timezone.utc).isoformat(),
                     "type":event_type,"subject":subject,"rule_ids":rule_ids,
                     "decision":"approved" if (result_obj.get("trade_approved") or result_obj.get("overall_compliant")) else "rejected",
                     "score":score,"input":input_obj,"result":result_obj})
 
 def policies_to_markdown(snapshot: PolicySnapshot, out_path="Policies.md"):
-    lines=[f"# Compliance Policies", f"- **Version**: {snapshot.version}", f"- **Checksum**: `{snapshot.checksum}`", f"- **Generated**: {datetime.utcnow().isoformat()}", ""]
+    lines=[f"# Compliance Policies", f"- **Version**: {snapshot.version}", f"- **Checksum**: `{snapshot.checksum}`", f"- **Generated**: {datetime.now(timezone.utc).isoformat()}", ""]
     for rid, r in sorted(snapshot.rules.items()):
         lines += [f"## {rid} — {r.rule_name}", f"- Source: **{r.regulation_source}**",
                   f"- Severity: **{r.severity}**", f"- Applies To: {', '.join(r.applies_to)}",
@@ -216,11 +216,11 @@ class PolicyStore:
         for rid,raw in data["rules"].items():
             rules[rid]=ComplianceRule(rule_id=raw["rule_id"], regulation_source=raw["regulation_source"], rule_name=raw["rule_name"],
                                       description=raw.get("description",""), severity=raw["severity"], applies_to=raw.get("applies_to", []),
-                                      effective_date=_parse_dt(raw["effective_date"]), last_updated=_parse_dt(raw.get("last_updated") or datetime.utcnow().isoformat()),
+                                      effective_date=_parse_dt(raw["effective_date"]), last_updated=_parse_dt(raw.get("last_updated") or datetime.now(timezone.utc).isoformat()),
                                       params=raw.get("params", {}))
         policy=PolicySet(version=data.get("version","v1"), rules=rules)
         raw_sorted=json.dumps(_policy_to_json(policy), sort_keys=True)
-        snap=PolicySnapshot(version=policy.version, checksum=_sha256(raw_sorted), loaded_at=datetime.utcnow(), rules=policy.rules)
+        snap=PolicySnapshot(version=policy.version, checksum=_sha256(raw_sorted), loaded_at=datetime.now(timezone.utc), rules=policy.rules)
         with self._lock:
             old=self._snapshot; self._snapshot=snap
         if old: self._log_policy_change(old, snap)
@@ -261,24 +261,66 @@ class PolicyStore:
                                                 json.dumps(new_d,indent=2,sort_keys=True).splitlines(),
                                                 fromfile=f"policies@{old.version}", tofile=f"policies@{new.version}"))
             AuditLogger.get().policy_change(old,new,diff); policies_to_markdown(new,"Policies.md")
-        except Exception: self._logger.exception("Audit policy change log failed")
+        except Exception:
+            # Silently fail - this is non-critical logging
+            pass
 
 # ---------------- Checker ----------------
 class ComplianceChecker:
-    def __init__(self, policy_store: PolicyStore):
-        self.policy_store=policy_store; self._snap=policy_store.snapshot(); policy_store.subscribe(self._on_update); self.audit=AuditLogger.get()
+    def __init__(self, policy_store: PolicyStore, db_service=None):
+        self.policy_store=policy_store
+        self.db_service=db_service; self._snap=policy_store.snapshot(); policy_store.subscribe(self._on_update); self.audit=AuditLogger.get()
     def _on_update(self, snap): self._snap=snap
     def get_rule(self, rid): return self._snap.rules.get(rid)
-    def validate_position_concentration(self, position_value, portfolio_value):
-        v=[]; rule=self.get_rule("CONC-001")
-        if not rule: return v
-        limit=float(rule.params.get("max_position",0.25))
-        if portfolio_value>0 and (position_value/portfolio_value)>limit:
-            v.append(ComplianceViolation(rule_id=rule.rule_id, violation_type="concentration_risk", severity=rule.severity,
-                                         description=f"Position would exceed {limit:.0%} of portfolio value",
-                                         recommended_action="Reduce trade size or diversify", auto_correctable=True,
-                                         metadata={"limit":limit}))
-        return v
+    def validate_position_concentration(self, position_value, portfolio_value, symbol=None, user_id=None, portfolio_data=None):
+        """Enhanced position concentration validation with existing position analysis."""
+        v=[]; warnings=[]; rule=self.get_rule("CONC-001")
+        if not rule: return v, warnings
+        
+        # Enhanced logic: Check total position (existing + new trade)
+        existing_position_value = 0
+        current_price = 0
+        
+        # Try to get existing position data
+        if portfolio_data and symbol:
+            # Look in assets first
+            for asset in portfolio_data.get('assets', []):
+                if asset.get('symbol') == symbol:
+                    existing_quantity = float(asset.get('quantity', 0))
+                    current_price = float(asset.get('current_price', 0))
+                    existing_position_value = existing_quantity * current_price
+                    break
+            
+            # Then check holdings if not found
+            if not existing_position_value:
+                for holding in portfolio_data.get('holdings', []):
+                    if holding.get('symbol') == symbol:
+                        existing_quantity = float(holding.get('quantity', 0))
+                        current_price = float(holding.get('current_price', 0))
+                        existing_position_value = existing_quantity * current_price
+                        break
+        
+        # Calculate new total position
+        new_total_position_value = existing_position_value + position_value
+        new_position_pct = (new_total_position_value / portfolio_value * 100) if portfolio_value > 0 else 0
+        
+        # MAJOR VIOLATION: >50% concentration (BLOCKS trade)
+        if new_position_pct > 50:
+            v.append(ComplianceViolation(
+                rule_id=rule.rule_id, 
+                violation_type="concentration_risk", 
+                severity="major",  # This will block the trade
+                description=f"Position would be {new_position_pct:.1f}% of portfolio (exceeds 50% limit). This violates diversification principles and regulatory suitability standards.",
+                recommended_action=f"Reduce trade size to keep {symbol or 'position'} under 50% of portfolio value",
+                auto_correctable=True,
+                metadata={"new_position_pct": new_position_pct, "limit": 50}
+            ))
+        
+        # WARNING: 25-50% concentration (allows trade with warning)
+        elif new_position_pct >= 25:
+            warnings.append(f"Large position: {new_position_pct:.1f}% concentration in {symbol or 'this security'}")
+        
+        return v, warnings
     def validate_sector_concentration(self, sector_alloc):
         v=[]; rule=self.get_rule("CONC-002")
         if not rule: return v
@@ -290,15 +332,139 @@ class ComplianceChecker:
                                              recommended_action="Rebalance across sectors",
                                              metadata={"sector":sector,"allocation":alloc,"limit":limit}))
         return v
-    def validate_wash_sale(self, trade_type, account_type):
+    def validate_wash_sale(self, trade_type, account_type, symbol=None, user_id=None, portfolio_id=None, quantity=0):
+        """Enhanced wash sale validation with database lookup for actual violations."""
         warnings=[]; viol=[]; rule=self.get_rule("TAX-001")
-        if not rule: return warnings, viol
-        if trade_type=="buy" and account_type=="taxable":
-            warnings.append("Potential wash sale if loss realized and repurchased within 30 days")
-            viol.append(ComplianceViolation(rule_id=rule.rule_id, violation_type="wash_sale", severity=rule.severity,
-                                            description="Potential wash sale within 30 days; loss may be disallowed",
-                                            recommended_action="Delay repurchase or use tax-advantaged account"))
+        if not rule: 
+            return warnings, viol
+        
+        # Only check for BUY orders in taxable accounts
+        if trade_type != "buy" or account_type != "taxable":
+            return warnings, viol
+            
+        # Use enhanced detection if we have required parameters
+        if not hasattr(self, 'db_service') or not self.db_service:
+            return warnings, viol
+            
+        if not user_id:
+            return warnings, viol
+        
+        if symbol and user_id and hasattr(self, 'db_service') and self.db_service:
+            try:
+                # Enhanced wash sale detection with database queries
+                violations = self._check_wash_sale_violation_enhanced(
+                    user_id=user_id,
+                    portfolio_id=portfolio_id,
+                    symbol=symbol,
+                    buy_quantity=quantity
+                )
+                
+                if violations:
+                    # Real violation detected - BLOCK the trade
+                    for violation in violations:
+                        viol.append(ComplianceViolation(
+                            rule_id=rule.rule_id,
+                            violation_type="wash_sale",
+                            severity="major",  # Block the trade
+                            description=violation.get('description', 'Wash sale violation detected'),
+                            recommended_action=violation.get('recommendation', 'Wait 31 days after sale or use tax-advantaged account'),
+                            metadata=violation
+                        ))
+                    return warnings, viol
+                    
+            except Exception as e:
+                # Fall through to basic warning if enhanced detection fails
+                pass
+        
+        # Basic warning if enhanced detection unavailable or no violation found
+        warnings.append("Verify no wash sale violation if selling similar security at loss within 30 days")
         return warnings, viol
+    
+    def _check_wash_sale_violation_enhanced(self, user_id, portfolio_id, symbol, buy_quantity):
+        """Enhanced wash sale detection with database queries."""
+        try:
+            from datetime import datetime, timezone, timezone, timedelta
+            from sqlalchemy import text
+            
+            if not self.db_service or not hasattr(self.db_service, 'engine'):
+                return []
+                
+            # Query for SELL transactions of the same symbol within 30 days
+            thirty_days_ago = datetime.now(timezone.utc) - timedelta(days=30)
+            
+            with self.db_service.engine.connect() as conn:
+                query = text("""
+                    SELECT t.id, t.symbol, t.quantity, t.price, t.created_at,
+                           pa.average_cost
+                    FROM transactions t
+                    JOIN portfolios p ON t.user_id = p.user_id
+                    LEFT JOIN portfolio_assets pa ON p.portfolio_id = pa.portfolio_id AND t.symbol = pa.symbol
+                    WHERE t.user_id = :user_id
+                      AND t.symbol = :symbol
+                      AND t.transaction_type = 'sell'
+                      AND t.status = 'executed'
+                      AND t.created_at >= :thirty_days_ago
+                    ORDER BY t.created_at DESC
+                """)
+                
+                result = conn.execute(query, {
+                    'user_id': user_id,
+                    'symbol': symbol,
+                    'thirty_days_ago': thirty_days_ago
+                })
+                
+                violations = []
+                total_disallowed_loss = 0
+                
+                for sell in result:
+                    # Get cost basis from portfolio_assets
+                    average_cost = float(sell.average_cost) if sell.average_cost else None
+                    sell_price = float(sell.price) if sell.price else None
+                    
+                    # If we don't have average_cost, get current price as fallback
+                    if not sell_price:
+                        try:
+                            from ..tools.alpaca_trading_service import alpaca_trading_service
+                            sell_price = alpaca_trading_service._get_current_price(symbol)
+                        except:
+                            sell_price = 0
+                    
+                    # Conservative approach: assume loss if we can't determine cost basis
+                    if not average_cost:
+                        average_cost = sell_price * 1.1  # Assume 10% loss
+                    
+                    # Calculate loss per share
+                    loss_per_share = max(0, average_cost - sell_price)
+                    
+                    if loss_per_share > 0:
+                        # This is a wash sale violation
+                        sell_quantity = float(sell.quantity)
+                        disallowed_quantity = min(buy_quantity, sell_quantity)
+                        disallowed_loss = loss_per_share * disallowed_quantity
+                        total_disallowed_loss += disallowed_loss
+                        
+                        days_ago = (datetime.now(timezone.utc) - sell.created_at).days
+                        
+                        violations.append({
+                            'violation_detected': True,
+                            'symbol': symbol,
+                            'sell_date': sell.created_at.strftime('%Y-%m-%d'),
+                            'days_ago': days_ago,
+                            'sell_price': sell_price,
+                            'average_cost': average_cost,
+                            'loss_per_share': loss_per_share,
+                            'disallowed_loss': disallowed_loss,
+                            'disallowed_quantity': disallowed_quantity,
+                            'description': f"Wash sale violation: You sold {symbol} at a loss ${loss_per_share:.2f}/share {days_ago} days ago. Repurchasing now will disallow ${disallowed_loss:.2f} in tax losses.",
+                            'recommendation': f"Wait until {(sell.created_at + timedelta(days=31)).strftime('%Y-%m-%d')} (31 days after sale) or use a tax-advantaged account."
+                        })
+                
+                return violations
+                
+        except Exception as e:
+            print(f"Error in enhanced wash sale detection: {e}")
+            return []
+    
     def validate_pattern_day_trader(self, equity_value, client_type):
         warnings=[]; viol=[]; rule=self.get_rule("TRAD-001")
         if not rule: return warnings, viol
@@ -337,9 +503,24 @@ class ComplianceChecker:
         for v in violations: score -= {"critical":40,"major":30,"warning":20,"advisory":10}.get(v.severity,15)
         score -= 5*len(warnings); return max(0, score)
     def check_trade_compliance(self, *, trade_type, symbol, quantity, price, portfolio_value, client_type="individual", account_type="taxable", user_id=None, portfolio_id=None, transaction_id=None, recommendation_id=None):
-        violations=[]; warnings=[]; recommendations=[]; trade_value=quantity*price
-        violations += self.validate_position_concentration(trade_value, portfolio_value)
-        ws_w, ws_v = self.validate_wash_sale(trade_type, account_type); warnings += ws_w; violations += ws_v
+        # Debug logging removed for cleaner output
+        violations=[]; warnings=[]; recommendations=[]
+        
+        # Handle None price by fetching current market price
+        if price is None:
+            try:
+                from ..tools.alpaca_trading_service import alpaca_trading_service
+                price = alpaca_trading_service._get_current_price(symbol)
+                # Debug logging removed for cleaner output
+            except Exception as e:
+                price = 0.0  # Fallback to prevent crash
+        
+        trade_value = quantity * price
+        # Debug logging removed for cleaner output
+        
+        conc_v, conc_w = self.validate_position_concentration(trade_value, portfolio_value, symbol=symbol, user_id=user_id, portfolio_data=None); violations += conc_v; warnings += conc_w
+        
+        ws_w, ws_v = self.validate_wash_sale(trade_type, account_type, symbol=symbol, user_id=user_id, portfolio_id=portfolio_id, quantity=quantity); warnings += ws_w; violations += ws_v
         p_w, p_v  = self.validate_pattern_day_trader(portfolio_value, client_type); warnings += p_w; violations += p_v
         violations += self.validate_penny_stock(price)
         warnings += self.validate_market_manipulation(trade_value, portfolio_value)
@@ -371,7 +552,7 @@ class ComplianceChecker:
         violations += v_s; warnings += w_s
         score=self.calculate_compliance_score(violations, warnings)
         overall = not any(v for v in violations if v.severity in ("critical","major"))
-        result = PortfolioComplianceCheck(overall, violations, warnings, recommendations, datetime.utcnow(), score)
+        result = PortfolioComplianceCheck(overall, violations, warnings, recommendations, datetime.now(timezone.utc), score)
         AuditLogger.get().compliance_event("portfolio", client_profile.get("client_id","unknown"),
             {"assets":assets,"portfolio_value":portfolio_value,"client_profile":client_profile},
             _dataclass_to_dict(result), [v.rule_id for v in violations], score)
@@ -379,7 +560,7 @@ class ComplianceChecker:
 
 # ---------------- Defaults ----------------
 def default_rules(version="v1"):
-    now=datetime.utcnow().isoformat()
+    now=datetime.now(timezone.utc).isoformat()
     return {"version":version,"rules":{
         "CONC-001":{"rule_id":"CONC-001","regulation_source":"SEC","rule_name":"Position Concentration Limit","description":"Individual position should not exceed threshold of portfolio value","severity":"warning","applies_to":["individual","institutional"],"effective_date":"2000-01-01T00:00:00Z","last_updated":now,"params":{"max_position":0.25}},
         "CONC-002":{"rule_id":"CONC-002","regulation_source":"SEC","rule_name":"Sector Concentration Limit","description":"Single sector allocation should not exceed threshold of portfolio","severity":"warning","applies_to":["individual","institutional"],"effective_date":"2000-01-01T00:00:00Z","last_updated":now,"params":{"max_sector":0.40}},

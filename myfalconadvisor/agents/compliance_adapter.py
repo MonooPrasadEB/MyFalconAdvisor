@@ -26,7 +26,7 @@ class ComplianceAdapter:
         if db_service:
             AuditLogger.get().set_db_service(db_service)
         
-        self.checker = ComplianceChecker(self.store)
+        self.checker = ComplianceChecker(self.store, db_service=db_service)
 
     def check_trade(self, **kwargs):
         # Pass all parameters (including optional tracking fields) to checker

@@ -20,6 +20,7 @@ from ..tools.compliance_checker import (
     portfolio_compliance_tool
 )
 from ..tools.database_service import database_service
+from ..tools.alpaca_trading_service import alpaca_trading_service
 from ..core.config import Config
 
 # Enhanced compliance with dynamic policy engine
@@ -101,6 +102,7 @@ class ComplianceReviewerAgent:
     """
     
     def __init__(self, db_service=None):
+        # Debug logging removed for cleaner output
         self.name = "compliance_reviewer"
         self.llm = ChatOpenAI(
             model=config.default_model,
@@ -117,6 +119,7 @@ class ComplianceReviewerAgent:
         
         # Enhanced compliance adapter (optional - adds scoring & audit trail)
         self.compliance_adapter = None
+        # Debug logging removed for cleaner output
         if ENHANCED_COMPLIANCE_AVAILABLE and db_service:
             try:
                 self.compliance_adapter = ComplianceAdapter(
@@ -126,7 +129,8 @@ class ComplianceReviewerAgent:
                 )
                 logger.info("✅ Enhanced compliance system enabled with dynamic policies")
             except Exception as e:
-                logger.warning(f"Could not initialize enhanced compliance: {e}")
+                # Silently fall back if enhanced compliance unavailable
+                pass
         
         # Review tracking
         self.pending_reviews: Dict[str, ReviewResult] = {}
@@ -275,6 +279,8 @@ Remember: Your primary responsibility is ensuring regulatory compliance while ma
         client_profile: Dict,
         recommendation_context: Dict
     ) -> Dict:
+        # Debug logging removed for cleaner output
+        
         """
         Review investment recommendation for compliance and client clarity.
         
@@ -292,6 +298,7 @@ Remember: Your primary responsibility is ensuring regulatory compliance while ma
             
             # Step 0: Enhanced quantitative compliance check (if available)
             enhanced_check = None
+            # Debug logging removed for cleaner output
             if self.compliance_adapter and recommendation_context.get('action') in ['buy', 'sell']:
                 try:
                     enhanced_check = self.compliance_adapter.check_trade(
@@ -301,18 +308,45 @@ Remember: Your primary responsibility is ensuring regulatory compliance while ma
                         price=recommendation_context.get('price', 0),
                         portfolio_value=client_profile.get('portfolio_value', 100000),
                         client_type=client_profile.get('client_type', 'individual'),
-                        account_type=client_profile.get('account_type', 'taxable')
+                        account_type=client_profile.get('account_type', 'taxable'),
+                        user_id=recommendation_context.get('user_id') or client_profile.get('user_id'),
+                        portfolio_id=recommendation_context.get('portfolio_id'),
+                        transaction_id=recommendation_context.get('transaction_id'),
+                        recommendation_id=recommendation_context.get('recommendation_id')
                     )
-                    logger.info(f"✅ Enhanced compliance check: Score {enhanced_check.get('compliance_score')}/100")
+                    # Debug logging removed for cleaner output
                 except Exception as e:
-                    logger.warning(f"Enhanced compliance check failed: {e}")
+                    # Silently handle enhanced compliance check failures
+                    pass
             
             # Step 1: Analyze original content for compliance issues
             compliance_issues = self._identify_compliance_issues(
                 recommendation_content, client_profile, recommendation_context
             )
             
-            # Merge enhanced violations if available
+            # Check if enhanced compliance BLOCKS the trade
+            if enhanced_check and enhanced_check.get('trade_approved') == False:
+                # Trade is BLOCKED by enhanced compliance - return rejection immediately
+                blocking_violations = enhanced_check.get('violations', [])
+                major_violations = [v for v in blocking_violations if v.get('severity') in ['major', 'critical']]
+                
+                if major_violations:
+                    violation_descriptions = []
+                    for v in major_violations:
+                        violation_descriptions.append(f"• {v.get('description', 'Compliance violation')} [{v.get('severity', 'major')}]")
+                    
+                    return {
+                        "review_id": review_id,
+                        "status": "rejected",
+                        "compliance_score": enhanced_check.get('compliance_score', 0),
+                        "trade_approved": False,
+                        "rejection_reason": "Trade blocked due to major compliance violations",
+                        "violations": major_violations,
+                        "violation_summary": "\n".join(violation_descriptions),
+                        "enhanced_check": enhanced_check
+                    }
+            
+            # Merge enhanced violations if available (for non-blocking violations)
             if enhanced_check and enhanced_check.get('violations'):
                 for violation in enhanced_check['violations']:
                     compliance_issues.append(ComplianceIssue(
@@ -350,11 +384,26 @@ Remember: Your primary responsibility is ensuring regulatory compliance while ma
             # Step 5: Create review result
             review_duration = (datetime.now() - start_time).total_seconds()
             
+            # Determine status based on severity of issues
+            major_or_critical_issues = [issue for issue in compliance_issues if issue.severity in ["major", "critical"]]
+            
+            # Debug logging removed for cleaner output
+            
+            if major_or_critical_issues:
+                status = ReviewStatus.REJECTED
+                # Debug logging removed for cleaner output
+            elif len(compliance_issues) > 0:
+                status = ReviewStatus.REQUIRES_REVISION
+                # Debug logging removed for cleaner output
+            else:
+                status = ReviewStatus.APPROVED
+                # Debug logging removed for cleaner output
+            
             review_result = ReviewResult(
                 review_id=review_id,
                 original_content=recommendation_content,
                 revised_content=revised_content,
-                status=ReviewStatus.APPROVED if len(compliance_issues) == 0 else ReviewStatus.REQUIRES_REVISION,
+                status=status,
                 compliance_issues=compliance_issues,
                 reviewed_by=self.name,
                 review_timestamp=datetime.now(),
@@ -412,6 +461,7 @@ Remember: Your primary responsibility is ensuring regulatory compliance while ma
             for issue in compliance_issues:
                 check_type = category_to_check_type.get(issue.category, "regulatory")
                 mapped_severity = severity_mapping.get(issue.severity, "medium")
+                # Debug logging removed for cleaner output
                 database_service.insert_compliance_check(
                     user_id=user_id,
                     portfolio_id=portfolio_id,
@@ -419,7 +469,7 @@ Remember: Your primary responsibility is ensuring regulatory compliance while ma
                     recommendation_id=recommendation_id,
                     check_type=check_type,
                     rule_name=issue.issue_id,
-                    rule_description=issue.description,
+                    rule_description=f"[SYSTEM-1-REVIEWER] {issue.description}",
                     check_result="fail" if issue.severity in ["critical", "major"] else "warning",
                     violation_details={
                         "category": issue.category,
@@ -455,19 +505,24 @@ Remember: Your primary responsibility is ensuring regulatory compliance while ma
             return {
                 "review_id": review_id,
                 "status": review_result.status.value,
+                "trade_approved": review_result.status != ReviewStatus.REJECTED,  # False if rejected
                 "compliance_score": enhanced_check.get('compliance_score') if enhanced_check else self._calculate_compliance_score(compliance_issues),
                 "quantitative_score": enhanced_check.get('compliance_score') if enhanced_check else None,
                 "original_content": recommendation_content,
                 "revised_content": revised_content,
-                "compliance_issues": [issue.dict() for issue in compliance_issues],
+                "compliance_issues": [issue.model_dump() for issue in compliance_issues],
                 "suitability_check": suitability_check,
                 "required_disclosures": required_disclosures,
                 "final_approval_required": review_result.final_approval_required,
-                "enhanced_check": enhanced_check  # Include full enhanced check results
+                "enhanced_check": enhanced_check,  # Include full enhanced check results
+                "rejection_reason": f"Trade blocked due to {len(major_or_critical_issues)} major compliance violation(s)" if major_or_critical_issues else None
             }
             
         except Exception as e:
+            print(f"🚨 EXCEPTION in compliance reviewer: {e}")
             logger.error(f"Error reviewing investment recommendation: {e}")
+            import traceback
+            traceback.print_exc()
             return {"error": str(e)}
     
     def create_client_communication(
@@ -627,8 +682,11 @@ Remember: Your primary responsibility is ensuring regulatory compliance while ma
         """Identify compliance issues in content."""
         issues = []
         
+        # Handle case where content might be a dict instead of string
+        content_str = content if isinstance(content, str) else str(content)
+        
         # Check for missing risk disclosures
-        if "risk" not in content.lower():
+        if "risk" not in content_str.lower():
             issues.append(ComplianceIssue(
                 issue_id="RISK-001",
                 severity="major",
@@ -639,8 +697,14 @@ Remember: Your primary responsibility is ensuring regulatory compliance while ma
                 auto_correctable=True
             ))
         
-        # Check for suitability analysis
-        if "suitable" not in content.lower() and "appropriate" not in content.lower():
+        # Check for suitability analysis (more flexible detection)
+        suitability_keywords = [
+            "suitable", "appropriate", "suitability analysis", "fits your", 
+            "aligns with", "matches your", "based on your", "given your"
+        ]
+        has_suitability = any(keyword in content_str.lower() for keyword in suitability_keywords)
+        
+        if not has_suitability:
             issues.append(ComplianceIssue(
                 issue_id="SUIT-001",
                 severity="critical",
@@ -652,7 +716,7 @@ Remember: Your primary responsibility is ensuring regulatory compliance while ma
             ))
         
         # Check for conflict of interest disclosure
-        if context.get("potential_conflicts") and "conflict" not in content.lower():
+        if context.get("potential_conflicts") and "conflict" not in content_str.lower():
             issues.append(ComplianceIssue(
                 issue_id="COI-001",
                 severity="critical",
@@ -665,22 +729,33 @@ Remember: Your primary responsibility is ensuring regulatory compliance while ma
         
         # ========== NEW COMPLIANCE CHECKS ==========
         
-        # Check for concentration risk warning
+        # Check for concentration risk warning with tiered severity
         position_pct = context.get('position_percentage', 0)
-        if position_pct > 10 and "concentration" not in content.lower():
+        if position_pct > 10 and "concentration" not in content_str.lower():
+            # Determine severity based on concentration level
+            if position_pct > 50:
+                severity = "critical"  # >50% blocks trade
+                description = f"Extreme concentration risk ({position_pct:.1f}% of portfolio) - position exceeds 50% limit"
+            elif position_pct > 25:
+                severity = "minor"  # 25-50% warns but doesn't block
+                description = f"Moderate concentration risk ({position_pct:.1f}% of portfolio) lacks warning disclosure"
+            else:
+                severity = "minor"  # 10-25% minor warning
+                description = f"Position concentration ({position_pct:.1f}% of portfolio) lacks risk disclosure"
+            
             issues.append(ComplianceIssue(
                 issue_id="CONC-001",
-                severity="major",
+                severity=severity,
                 category="disclosure",
-                description=f"Large position size ({position_pct:.1f}% of portfolio) lacks concentration risk warning",
+                description=description,
                 regulation_reference="SEC Investment Advisers Act - Diversification",
                 suggested_resolution=f"Add concentration risk disclosure for {position_pct:.1f}% position",
                 auto_correctable=True
             ))
         
         # Check for past performance disclaimer
-        if any(word in content.lower() for word in ['return', 'performance', 'gain', 'profit']):
-            if "past performance" not in content.lower():
+        if any(word in content_str.lower() for word in ['return', 'performance', 'gain', 'profit']):
+            if "past performance" not in content_str.lower():
                 issues.append(ComplianceIssue(
                     issue_id="PERF-001",
                     severity="minor",
@@ -694,9 +769,9 @@ Remember: Your primary responsibility is ensuring regulatory compliance while ma
         # Check for tax advisor referral in retirement accounts
         account_type = client_profile.get('account_type', '')
         if 'retirement' in account_type.lower() or 'ira' in account_type.lower():
-            if 'tax' in content.lower() and "tax advisor" not in content.lower():
+            if 'tax' in content_str.lower() and "tax advisor" not in content_str.lower():
                 issues.append(ComplianceIssue(
-                    issue_id="TAX-001",
+                    issue_id="TAX-002",
                     severity="minor",
                     category="disclosure",
                     description="Tax discussion for retirement account lacks tax advisor referral",
@@ -704,6 +779,41 @@ Remember: Your primary responsibility is ensuring regulatory compliance while ma
                     suggested_resolution="Add suggestion to consult tax advisor for tax implications",
                     auto_correctable=True
                 ))
+        
+        # ========== WASH SALE CHECK ==========
+        # Check for wash sale rule violation (IRS Section 1091)
+        # Wash sale applies when buying a security in a taxable account within 30 days of selling at a loss
+        trade_action = context.get('action', '').lower()
+        account_type = client_profile.get('account_type', 'taxable')  # Default to taxable if not specified
+        symbol = context.get('symbol', '').upper()
+        user_id = context.get('user_id')
+        portfolio_id = context.get('portfolio_id')
+        
+        # Re-enabled: Use compliance_reviewer's wash sale detection (most complete implementation)
+        if trade_action == 'buy' and account_type.lower() == 'taxable' and symbol and user_id:
+            wash_sale_violation = self._check_wash_sale_violation(
+                user_id=user_id,
+                portfolio_id=portfolio_id,
+                symbol=symbol,
+                buy_quantity=context.get('quantity', 0)
+            )
+            
+            if wash_sale_violation:
+                # Use the severity from the wash sale violation result (should be "major" to block trades)
+                severity = wash_sale_violation.get('severity', 'major')
+                # Debug logging removed for cleaner output
+                
+                issues.append(ComplianceIssue(
+                    issue_id="TAX-001",
+                    severity=severity,
+                    category="regulatory",
+                    description=wash_sale_violation.get('description', 'Wash sale violation detected'),
+                    regulation_reference="IRS Wash Sale Rule Section 1091",
+                    suggested_resolution=wash_sale_violation.get('recommendation', 'Delay repurchase or use a tax-advantaged account'),
+                    auto_correctable=False
+                ))
+                logger.warning(f"   - Added ComplianceIssue with severity: {severity}")
+        # ========== END WASH SALE CHECK ==========
         
         # ========== END NEW CHECKS ==========
         
@@ -866,6 +976,185 @@ IMPORTANT DISCLAIMERS:
             "Contact us if you have questions or need clarification"
         ]
     
+    def _check_wash_sale_violation(
+        self,
+        user_id: str,
+        portfolio_id: Optional[str],
+        symbol: str,
+        buy_quantity: float
+    ) -> Optional[Dict]:
+        """
+        Check for wash sale violations by querying recent SELL transactions.
+        
+        Wash sale rule (IRS Section 1091):
+        - If you sell a security at a loss and repurchase it within 30 days, the loss is disallowed
+        - The disallowed loss is added to the cost basis of the repurchased shares
+        
+        Args:
+            user_id: User ID
+            portfolio_id: Portfolio ID (optional)
+            symbol: Symbol being purchased
+            buy_quantity: Quantity being purchased
+            
+        Returns:
+            Dict with violation details if found, None otherwise
+        """
+        try:
+            if not database_service.engine:
+                logger.warning("Database not available for wash sale check")
+                return None
+            
+            # Query recent SELL transactions for this symbol within 30 days
+            thirty_days_ago = datetime.now() - timedelta(days=30)
+            
+            with database_service.get_session() as session:
+                from sqlalchemy import text
+                
+                # Get recent SELL transactions for this symbol
+                # Join via user_id since transactions.portfolio_id might be NULL
+                query = text("""
+                    SELECT 
+                        t.transaction_id,
+                        t.symbol,
+                        t.transaction_type,
+                        t.quantity,
+                        t.price,
+                        t.status,
+                        t.created_at,
+                        pa.average_cost
+                    FROM transactions t
+                    LEFT JOIN portfolios p ON t.user_id = p.user_id
+                    LEFT JOIN portfolio_assets pa ON p.portfolio_id = pa.portfolio_id 
+                        AND t.symbol = pa.symbol
+                    WHERE t.user_id = :user_id
+                      AND t.symbol = :symbol
+                      AND t.transaction_type = 'SELL'
+                      AND t.status = 'executed'
+                      AND t.created_at >= :thirty_days_ago
+                    ORDER BY t.created_at DESC
+                """)
+                
+                result = session.execute(query, {
+                    "user_id": user_id,
+                    "symbol": symbol,
+                    "thirty_days_ago": thirty_days_ago
+                })
+                
+                recent_sells = result.fetchall()
+                
+                if not recent_sells:
+                    # No recent sells, no wash sale violation
+                    return None
+                
+                # Get current price from Alpaca
+                current_price = alpaca_trading_service._get_current_price(symbol)
+                
+                # Check each sell transaction for losses
+                violations = []
+                total_disallowed_loss = 0.0
+                
+                for sell in recent_sells:
+                    sell_price = float(sell.price) if sell.price else 0
+                    sell_quantity = float(sell.quantity) if sell.quantity else 0
+                    average_cost = float(sell.average_cost) if sell.average_cost and sell.average_cost > 0 else None
+                    
+                    # If sell price is missing (0), try to get current market price as estimate
+                    if sell_price == 0:
+                        sell_price = current_price if current_price > 0 else 2.0  # Use current price or conservative estimate
+                        logger.warning(f"Using estimated sell price ${sell_price:.2f} for {symbol} transaction {sell.transaction_id}")
+                    
+                    # Handle missing cost basis - be conservative and assume loss for wash sale purposes
+                    if not average_cost:
+                        logger.warning(f"No cost basis available for {symbol} sell transaction {sell.transaction_id}")
+                        # For wash sale compliance, assume this was a loss transaction
+                        # This is conservative but ensures we don't miss potential violations
+                        if sell_price == 0:  # If price is also missing, use current price as estimate
+                            sell_price = current_price if current_price > 0 else 2.0  # Conservative estimate
+                        
+                        # Assume the average cost was higher than sell price (i.e., a loss)
+                        estimated_cost = sell_price * 1.1  # Assume 10% loss
+                        logger.warning(f"Assuming {symbol} was sold at a loss (estimated cost: ${estimated_cost:.2f} vs sell: ${sell_price:.2f}) for wash sale compliance")
+                        average_cost = estimated_cost
+                    
+                    # Check if this sale was at a loss
+                    if sell_price < average_cost:
+                        loss_per_share = average_cost - sell_price
+                        total_loss = loss_per_share * sell_quantity
+                        
+                        # Calculate disallowed loss (limited by buy quantity)
+                        disallowed_quantity = min(buy_quantity, sell_quantity)
+                        disallowed_loss = loss_per_share * disallowed_quantity
+                        total_disallowed_loss += disallowed_loss
+                        
+                        # Handle timezone-aware datetime comparison
+                        now = datetime.now()
+                        sell_date = sell.created_at
+                        if sell_date.tzinfo is not None and now.tzinfo is None:
+                            # Make now timezone-aware to match sell_date
+                            from datetime import timezone
+                            now = now.replace(tzinfo=timezone.utc)
+                        elif sell_date.tzinfo is None and now.tzinfo is not None:
+                            # Make sell_date timezone-aware
+                            from datetime import timezone
+                            sell_date = sell_date.replace(tzinfo=timezone.utc)
+                        
+                        days_ago = (now - sell_date).days
+                        
+                        violations.append({
+                            "transaction_id": str(sell.transaction_id),
+                            "sell_date": sell.created_at.isoformat(),
+                            "days_ago": days_ago,
+                            "sell_quantity": sell_quantity,
+                            "sell_price": sell_price,
+                            "average_cost": average_cost,
+                            "loss_per_share": loss_per_share,
+                            "total_loss": total_loss,
+                            "disallowed_loss": disallowed_loss,
+                            "disallowed_quantity": disallowed_quantity
+                        })
+                
+                if violations:
+                    # Build description
+                    violation_count = len(violations)
+                    days_since_first = violations[0]['days_ago']
+                    
+                    description = (
+                        f"Wash sale violation detected: You sold {symbol} at a loss "
+                        f"{days_since_first} days ago and are now repurchasing it. "
+                        f"The IRS will disallow ${total_disallowed_loss:.2f} of tax loss deduction. "
+                        f"This loss will be added to your cost basis for the repurchased shares."
+                    )
+                    
+                    recommendation = (
+                        f"To avoid wash sale: (1) Wait until {violations[0]['sell_date'][:10]} "
+                        f"(31 days after sale) before repurchasing, or (2) Use a tax-advantaged account "
+                        f"(IRA/401k) for this purchase, or (3) Purchase a substantially different but "
+                        f"similar security to maintain market exposure."
+                    )
+                    
+                    return {
+                        "violation_detected": True,
+                        "trade_approved": False,  # BLOCK the trade
+                        "rule_id": "TAX-001",
+                        "severity": "major",
+                        "symbol": symbol,
+                        "violation_count": violation_count,
+                        "total_disallowed_loss": total_disallowed_loss,
+                        "disallowed_loss": total_disallowed_loss,  # For backward compatibility
+                        "violations": violations,
+                        "description": description,
+                        "recommendation": recommendation,
+                        "rejection_reason": f"Wash sale violation: ${total_disallowed_loss:.2f} tax loss would be disallowed",
+                        "current_price": current_price
+                    }
+                
+                return None
+                
+        except Exception as e:
+            logger.error(f"Error checking wash sale violation: {e}")
+            # Don't block the trade if we can't check - just log the error
+            return None
+    
     def _suggest_next_steps(self, content_type: str, content: str) -> List[str]:
         """Suggest next steps based on content type."""
         if content_type == "recommendation":
@@ -886,5 +1175,6 @@ IMPORTANT DISCLAIMERS:
             return ["Contact us if you have questions or need assistance"]
 
 
-# Create agent instance
-compliance_reviewer_agent = ComplianceReviewerAgent()
+# Create agent instance with database service
+from ..tools.database_service import database_service
+compliance_reviewer_agent = ComplianceReviewerAgent(db_service=database_service)

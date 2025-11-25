@@ -16,10 +16,15 @@ import traceback
 # Add the parent directory to path
 sys.path.append(str(Path(__file__).parent.parent))
 
-# Suppress known warnings
+# Suppress known warnings for cleaner output
 warnings.filterwarnings('ignore', message='empyrical not available')
 warnings.filterwarnings('ignore', message='arch package not available')
 warnings.filterwarnings('ignore', message=".*'dict' object has no attribute 'lower'.*")
+warnings.filterwarnings('ignore', category=DeprecationWarning)
+warnings.filterwarnings('ignore', category=UserWarning)
+warnings.filterwarnings('ignore', message='.*Pydantic.*')
+warnings.filterwarnings('ignore', message='.*datetime.utcnow.*')
+warnings.filterwarnings('ignore', message='.*Field.*')
 
 def check_prerequisites():
     """Check system prerequisites."""
@@ -69,7 +74,14 @@ def check_prerequisites():
         "pydantic-settings"
     ]
     
-    installed_packages = subprocess.check_output([sys.executable, "-m", "pip", "freeze"]).decode()
+    try:
+        installed_packages = subprocess.check_output(
+            [sys.executable, "-m", "pip", "freeze"],
+            timeout=10
+        ).decode()
+    except (subprocess.TimeoutExpired, subprocess.CalledProcessError):
+        # If pip freeze fails or times out, skip package check
+        installed_packages = ""
     installed_packages = [p.split("==")[0].lower() for p in installed_packages.split()]
     
     missing_packages = [p for p in required_packages if p.lower() not in installed_packages]
@@ -91,12 +103,23 @@ def run_test_suite(test_file: str, suite_name: str = None) -> float:
     
     print(f"\n🧪 {suite_name}")
     print("=" * 80)
+    print(f"⏳ Running {test_file}...")
     
-    result = subprocess.run(
-        [sys.executable, str(Path(__file__).parent / test_file)],
-        capture_output=True,
-        text=True
-    )
+    # Run test with warning suppression and timeout
+    try:
+        result = subprocess.run(
+            [sys.executable, "-W", "ignore", str(Path(__file__).parent / test_file)],
+            capture_output=True,
+            text=True,
+            env={**os.environ, "PYTHONWARNINGS": "ignore"},
+            timeout=300  # 5 minute timeout per test suite
+        )
+    except subprocess.TimeoutExpired:
+        print(f"⏱️  Test suite {test_file} timed out after 5 minutes")
+        return 0
+    except Exception as e:
+        print(f"❌ Error running {test_file}: {e}")
+        return 0
     
     # Print output
     print(result.stdout)

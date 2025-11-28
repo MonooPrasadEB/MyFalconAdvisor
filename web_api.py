@@ -41,6 +41,7 @@ import uvicorn
 from myfalconadvisor.core.config import Config
 from myfalconadvisor.tools.database_service import database_service
 from myfalconadvisor.tools.alpaca_trading_service import alpaca_trading_service
+from myfalconadvisor.tools.tax_loss_harvesting_service import tax_loss_harvesting_service
 from myfalconadvisor.core.supervisor import investment_advisor_supervisor
 from myfalconadvisor.tools.chat_logger import log_advisor_response
 
@@ -611,6 +612,168 @@ async def execute_trade(request: TradeRequest, current_user: dict = Depends(get_
             "status": "failed",
             "message": f"Trade execution failed: {str(e)}"
         }
+
+# Tax Loss Harvesting endpoints
+@app.get("/tax-loss-harvesting/analyze")
+async def analyze_tax_loss_harvesting(current_user: dict = Depends(get_current_user)):
+    """Analyze portfolio for tax-loss harvesting opportunities"""
+    try:
+        user_id = current_user["user_id"]
+        
+        # Get user's portfolio ID from database
+        session = database_service.get_session()
+        if not session:
+            # In mock mode, return empty opportunities
+            return {
+                "status": "success",
+                "opportunities": [],
+                "summary": {
+                    "opportunities_count": 0,
+                    "total_potential_savings": 0,
+                    "total_realized_loss": 0,
+                    "average_loss_percentage": 0,
+                    "wash_sale_risks": 0
+                }
+            }
+        
+        try:
+            from sqlalchemy import text
+            with session:
+                result = session.execute(text("""
+                    SELECT portfolio_id FROM portfolios 
+                    WHERE user_id = :user_id 
+                    ORDER BY is_primary DESC, created_at DESC 
+                    LIMIT 1
+                """), {"user_id": user_id})
+                
+                portfolio_row = result.fetchone()
+                if not portfolio_row:
+                    raise HTTPException(status_code=404, detail="Portfolio not found")
+                
+                portfolio_id = str(portfolio_row[0])
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"Error getting portfolio: {e}")
+            raise HTTPException(status_code=500, detail=f"Error getting portfolio: {str(e)}")
+        
+        # Analyze for tax-loss harvesting opportunities
+        opportunities = tax_loss_harvesting_service.analyze_portfolio(
+            portfolio_id=portfolio_id,
+            user_id=user_id
+        )
+        
+        # Get summary
+        summary = tax_loss_harvesting_service.get_harvest_summary(opportunities)
+        
+        return {
+            "status": "success",
+            "opportunities": summary["opportunities"],
+            "summary": {
+                "opportunities_count": summary["opportunities_count"],
+                "total_potential_savings": summary["total_potential_savings"],
+                "total_realized_loss": summary["total_realized_loss"],
+                "average_loss_percentage": summary["average_loss_percentage"],
+                "wash_sale_risks": summary["wash_sale_risks"]
+            }
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Tax-loss harvesting analysis error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Analysis failed: {str(e)}")
+
+class TaxLossHarvestRequest(BaseModel):
+    symbol: str
+    alternative_symbol: Optional[str] = None
+    reinvest: bool = True
+
+@app.post("/tax-loss-harvesting/execute")
+async def execute_tax_loss_harvest(
+    request: TaxLossHarvestRequest,
+    current_user: dict = Depends(get_current_user)
+):
+    """Execute tax-loss harvesting for a specific opportunity"""
+    try:
+        user_id = current_user["user_id"]
+        
+        # Get user's portfolio ID from database
+        session = database_service.get_session()
+        if not session:
+            raise HTTPException(status_code=503, detail="Database service not available")
+        
+        try:
+            from sqlalchemy import text
+            with session:
+                result = session.execute(text("""
+                    SELECT portfolio_id FROM portfolios 
+                    WHERE user_id = :user_id 
+                    ORDER BY is_primary DESC, created_at DESC 
+                    LIMIT 1
+                """), {"user_id": user_id})
+                
+                portfolio_row = result.fetchone()
+                if not portfolio_row:
+                    raise HTTPException(status_code=404, detail="Portfolio not found")
+                
+                portfolio_id = str(portfolio_row[0])
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"Error getting portfolio: {e}")
+            raise HTTPException(status_code=500, detail=f"Error getting portfolio: {str(e)}")
+        
+        # Find the opportunity
+        opportunities = tax_loss_harvesting_service.analyze_portfolio(
+            portfolio_id=portfolio_id,
+            user_id=user_id
+        )
+        
+        # Find matching opportunity
+        opportunity = None
+        for opp in opportunities:
+            if opp.symbol.upper() == request.symbol.upper():
+                opportunity = opp
+                break
+        
+        if not opportunity:
+            raise HTTPException(
+                status_code=404,
+                detail=f"No tax-loss harvesting opportunity found for {request.symbol}"
+            )
+        
+        # Execute the harvest
+        result = tax_loss_harvesting_service.execute_harvest(
+            portfolio_id=portfolio_id,
+            user_id=user_id,
+            opportunity=opportunity,
+            alternative_symbol=request.alternative_symbol,
+            reinvest=request.reinvest
+        )
+        
+        if result["success"]:
+            return {
+                "status": "success",
+                "message": f"Tax-loss harvest executed for {opportunity.symbol}",
+                "tax_savings": result["tax_savings"],
+                "realized_loss": result["realized_loss"],
+                "sell_order": result.get("sell_order"),
+                "buy_order": result.get("buy_order"),
+                "alternative_symbol": result.get("alternative_symbol")
+            }
+        else:
+            raise HTTPException(
+                status_code=400,
+                detail=result.get("error", "Tax-loss harvest execution failed")
+            )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Tax-loss harvesting execution error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Execution failed: {str(e)}")
+
 
 # Onboarding endpoint
 @app.get("/profile")

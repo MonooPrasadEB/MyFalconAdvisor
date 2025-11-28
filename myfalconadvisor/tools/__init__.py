@@ -1,5 +1,7 @@
 """Financial analysis and market data tools."""
 
+
+from .tax_loss_harvesting_service import TaxLossHarvestingService, tax_loss_harvesting_service
 from .portfolio_analyzer import AdvancedPortfolioAnalyzer, portfolio_analysis_tool
 from .risk_assessment import AdvancedRiskAssessmentService, risk_assessment_tool, risk_scenario_tool
 from .alpaca_trading_service import alpaca_trading_service
@@ -19,5 +21,6 @@ __all__ = [
     "compliance_check_tool",
     "DatabaseService",
     "chat_logger",
-    "portfolio_sync_service"
+    "portfolio_sync_service",
+    "tax_loss_harvesting_service"
 ]

@@ -195,6 +195,7 @@ def main():
         ("test_compliance_reviewer.py", "Compliance Reviewer"),
         ("test_trade_execution_compliance.py", "Trade Execution & Compliance"),
         ("test_chat_simple.py", "Chat System")
+        ("test_tax_loss_harvesting_service.py", "Tax Loss Harvesting")
     ]
     
     # Run tests and collect results

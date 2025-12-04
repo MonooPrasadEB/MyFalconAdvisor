@@ -10,6 +10,9 @@ import Signup from './components/Signup'
 // Demo data import removed - ready for database integration
 import './styles/modern-ui.css'
 
+// Import logo
+import logoImage from './assets/logo.jpeg'
+
 const API_BASE = import.meta.env.VITE_API_BASE || 'http://127.0.0.1:8000'
 
 export default function App() {
@@ -83,10 +86,11 @@ export default function App() {
       <div className="app-container">
         <div className="app-content">
           <header className="app-header" style={{ justifyContent: 'center', textAlign: 'center' }}>
-            <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', justifyContent: 'center' }}>
+              {logoImage && <img src={logoImage} alt="MyFalconAdvisor Logo" className="app-logo" />}
               <h1 className="app-title">MyFalconAdvisor</h1>
-              <p className="app-subtitle">AI-Powered Financial Advisory Platform</p>
             </div>
+            <p className="app-subtitle">AI-Powered Financial Advisory Platform</p>
           </header>
           
           <div className={`status-badge ${isConnected ? 'connected' : 'disconnected'}`} style={{ marginBottom: '32px' }}>
@@ -119,9 +123,12 @@ export default function App() {
     <div className="app-container">
       <div className="app-content">
         <header className="app-header">
-          <div>
-            <h1 className="app-title">MyFalconAdvisor</h1>
-            <p className="app-subtitle">Welcome back, {user?.firstName || 'User'}! 👋</p>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            {logoImage && <img src={logoImage} alt="MyFalconAdvisor Logo" className="app-logo" />}
+            <div>
+              <h1 className="app-title">MyFalconAdvisor</h1>
+              <p className="app-subtitle">Welcome back, {user?.firstName || 'User'}! 👋</p>
+            </div>
           </div>
           <nav className="nav-container">
             <button 
